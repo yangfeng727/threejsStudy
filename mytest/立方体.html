@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>立方体运动</title>
+		<style>
+			body {
+				font-family: Monospace;
+				backgroud: #f0f0f0;
+				margin: 0px;
+				overflow: hidden;
+			}
+
+			#c {
+				width: 100%;
+				height: 100%;
+			}
+		</style>
+		<!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+	</head>
+	<body>
+		<canvas id="c"></canvas>
+		<script type="module">
+			import * as THREE from './build/three.module.js';
+			// import * as THREE from 'https://unpkg.com/three@0.108.0/build/three.module.js';
+
+			function main() {
+				let wireframe = false
+
+				// render
+				const canvas = document.querySelector('#c');
+				const renderer = new THREE.WebGLRenderer({
+					antialias: true,
+					canvas: canvas
+				});
+				// renderer.setClearColor(0x3399CC);//设置窗口背景颜色
+				renderer.setSize(canvas.clientWidth, canvas.clientHeight);//设置窗口尺寸
+				
+				// scene
+				const scene = new THREE.Scene();
+				
+				// camera
+				const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.2, 5);
+		        camera.position.set(0, 1, 4);//设置相机位置
+			
+				// const camera = new THREE.PerspectiveCamera(25, canvas.clientWidth / canvas.clientHeight, 1, 1000);
+				// camera.position.set(80, 150,270);//设置相机位置
+				camera.lookAt(scene.position);//让相机指向场景中心
+				
+				// 生成立方体1
+				// function factoryCubeTest() {
+				// 	const geometry = new THREE.BoxGeometry(20, 40, 20, 5, 5, 5);
+				// 	const material = new THREE.MeshPhongMaterial({
+				// 		color: 0x44aa88,
+				// 		wireframe
+				// 	}); // 绿蓝色
+				
+				// 	let cube = new THREE.Mesh(geometry, material)
+				// 	cube.position.x = 0;
+				// 	return cube
+				// }
+				
+
+				// 生成立方体1
+				function factoryCube1() {
+					// const geometry = new THREE.BoxGeometry(2, 1, 1, 10, 10, 10);
+					const geometry = new THREE.ConeGeometry( 1, 2, 3 );
+					const material = new THREE.MeshPhongMaterial({
+						color: 0x44aa88,
+						wireframe
+					}); // 绿蓝色
+
+					let cube = new THREE.Mesh(geometry, material)
+					cube.position.x = -2;
+					return cube
+				}
+
+				// 生成立方体2
+				function factoryCube2() {
+					const geometry = new THREE.BoxGeometry(1, 1, 1);
+					const material = new THREE.MeshPhysicalMaterial({
+						color: 0x8844aa,
+						wireframe
+					}); // 绿蓝色
+
+					let cube = new THREE.Mesh(geometry, material)
+					cube.position.x = 0;
+					return cube
+				}
+
+				// 生成立方体3
+				function factoryCube3() {
+					const geometry = new THREE.SphereGeometry(1, 30, 30);
+					const material = new THREE.MeshNormalMaterial({
+						// color: 0xaa8844,
+						wireframe
+					}); // 绿蓝色
+
+					let cube = new THREE.Mesh(geometry, material)
+					cube.position.x = 2;
+					return cube
+				}
+
+				const cubes = [
+					factoryCube1(),
+					factoryCube2(),
+					factoryCube3()
+				]
+
+				// 将立方体添加到场景
+				cubes.map(item => {
+					scene.add(item)
+				})
+
+				// 添加灯光
+				function addLight() {
+					//自然光
+					var ambientLight = new THREE.AmbientLight( 0x606060 );
+					scene.add( ambientLight );
+					
+					const color = 0xFFFFFF;
+					const intensity = 1;
+					const light = new THREE.DirectionalLight(color, intensity);
+					light.position.set(-1, 2, 4);
+					scene.add(light);
+				}
+				addLight()
+				
+				// 显示坐标系
+				function showXYZ() {
+					// var axisHelper = new THREE.AxisHelper(250)
+					// scene.add(axisHelper); // 将线加入场景
+				
+				// axisHelper改为了
+					scene.add( new THREE.AxesHelper( 250 ) );
+				}
+				showXYZ()
+
+                // 降低动画频率降低
+				let diffTime = 60; // 动画最小时间间隔,单位 ms
+				let lastDate = Date.now() // 上次时间 - 初始记录的当前时间
+				let limitRateFn = function(animateFn) {
+					// 运动时间
+					let currentDate = Date.now()
+					if (currentDate - lastDate >= diffTime) {
+						lastDate = currentDate
+
+						animateFn()
+					}
+				}
+
+				function render(time) {
+					
+					let animate = function(){
+						// time *= 0.001;  // 将时间单位变为秒
+						cubes.forEach((cube, ndx) => {
+							// const speed = 1 + ndx * .1;
+							// const rot = time * speed;
+							cube.rotation.x += 0.01 + 0.01 * ndx;
+							cube.rotation.y += 0.01 + 0.01 * ndx;
+						});
+
+						renderer.render(scene, camera);
+					}
+//
+//					// 指定动画频率降低
+					limitRateFn(animate)
+//					 animate()
+
+					requestAnimationFrame(render);
+				}
+				render();
+			}
+			main()
+		</script>
+	</body>
+</html>
