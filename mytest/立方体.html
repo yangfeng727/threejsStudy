@@ -34,10 +34,11 @@
 					canvas: canvas
 				});
 				// renderer.setClearColor(0x3399CC);//设置窗口背景颜色
-				renderer.setSize(canvas.clientWidth, canvas.clientHeight);//设置窗口尺寸
+//				renderer.setSize(canvas.clientWidth, canvas.clientHeight);//设置窗口尺寸
 				
 				// scene
 				const scene = new THREE.Scene();
+				// scene.background = new THREE.Color(0xAAAAAA);
 				
 				// camera
 				const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.2, 5);
@@ -80,6 +81,7 @@
 					const geometry = new THREE.BoxGeometry(1, 1, 1);
 					const material = new THREE.MeshPhysicalMaterial({
 						color: 0x8844aa,
+						// side: THREE.DoubleSide,
 						wireframe
 					}); // 绿蓝色
 
@@ -149,7 +151,24 @@
 					}
 				}
 
+                function resizeRendererToDisplaySize(renderer) {
+                    const canvas = renderer.domElement;
+                    const width = canvas.clientWidth;
+                    const height = canvas.clientHeight;
+                    const needResize = canvas.width !== width || canvas.height !== height;
+                    if (needResize) {
+                        renderer.setSize(width, height, false);
+                    }
+                    return needResize;
+                }
+
 				function render(time) {
+
+                    if (resizeRendererToDisplaySize(renderer)) {
+                        const canvas = renderer.domElement;
+                        camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                        camera.updateProjectionMatrix();
+                    }
 					
 					let animate = function(){
 						// time *= 0.001;  // 将时间单位变为秒
