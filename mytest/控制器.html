@@ -1,0 +1,197 @@
+<!--
+ 注意：很多文档都是旧的了，最好下载官网最新threejs，看里面的文档并结合案例
+ threejs github地址：
+ https://github.com/mrdoob/three.js
+
+ 本页面主要介绍几个控制器
+-->
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>控制器</title>
+		<style>
+			*{
+				margin:0;
+				padding:0;
+			}
+			body {
+				font-family: Monospace;
+				backgroud: #f0f0f0;
+				margin: 0px;
+				overflow: hidden;
+			}
+
+			#c {
+				width: 100%;
+				height: 100%;
+			}
+		</style>
+		<!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+	</head>
+	<body>
+	<div id="wrap">
+		<canvas id="c"></canvas>
+	</div>
+
+		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+		</script>
+		<script type="module">
+            import * as THREE from 'three';
+//			import * as THREE from './build/three.module.js';
+            import { OrbitControls } from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+            import { DragControls } from './jsm/controls/DragControls.js'; // 拖拽控制器
+
+			function main() {
+                // render
+                const canvas = document.querySelector('#c');
+                const renderer = new THREE.WebGLRenderer({
+                    antialias: true,
+                    canvas
+                });
+//                renderer.setSize(canvas.clientWidth, canvas.clientHeight); //设置窗口尺寸
+
+                var scene = new THREE.Scene();
+
+                var camera = new THREE.PerspectiveCamera( 45, canvas.clientWidth / canvas.clientHeight, 1, 10000 );
+                camera.position.set( 0, 5, 5 );
+
+                // 生成立方体2
+                function factoryCube2() {
+                    const geometry = new THREE.DodecahedronGeometry(1, 0);
+                    const material = new THREE.MeshPhongMaterial({
+                        color: 0x8844aa,
+						side: THREE.DoubleSide,
+                        flatShading:true,
+//                        emissive:0X482559,
+						wireframe:false
+                    }); // 绿蓝色
+
+					// 生成随机颜色
+                    const hue = Math.random();
+                    const saturation = 0.3;
+                    const luminance = .4;
+                    material.color.setHSL(hue, saturation, luminance);
+
+                    let cube = new THREE.Mesh(geometry, material)
+                    cube.position.x = 0;
+                    scene.add(cube)
+                    return cube
+                }
+
+                const cubes = [
+                    factoryCube2(),
+                ]
+
+                // 添加灯光
+                function addLight() {
+                    //自然光
+                    var ambientLight = new THREE.AmbientLight( 0x606060 );
+                    scene.add( ambientLight );
+
+//                    const light = new THREE.DirectionalLight(color, intensity);
+                    const light = new THREE.SpotLight (0xFFFFFF);
+                    light.position.set(-10, 103, 103);
+                    light.angle = Math.PI / 9;
+                    scene.add(light);
+
+                    const light22 = new THREE.SpotLight (0xFFFFFF);
+                    light22.position.set(10, -103, -103);
+                    scene.add(light22);
+
+                    const color = 0xFFFFFF;
+                    const intensity = 1;
+                    const light2 = new THREE.DirectionalLight(color, intensity);
+                    light2.position.set(-3, 3, 3);
+                    scene.add(light2);
+
+                    // 添加helper
+                    var helper = new THREE.DirectionalLightHelper( light, 5 );
+                    scene.add( helper );
+                    var helper2 = new THREE.DirectionalLightHelper( light2, 5 );
+                    scene.add( helper2 );
+                    var helper22 = new THREE.DirectionalLightHelper( light22, 5 );
+                    scene.add( helper22 );
+                }
+                addLight()
+
+                // 显示坐标系
+                function showXYZ() {
+                    // var axisHelper = new THREE.AxisHelper(250)
+                    // scene.add(axisHelper); // 将线加入场景
+
+                    // axisHelper改为了
+//                    scene.add(new THREE.AxesHelper(250));
+                    cubes.map(item=>{
+                        item.add(new THREE.AxesHelper(250));
+					})
+                }
+
+                showXYZ()
+
+
+				// 添加控制器
+                var controls = new OrbitControls( camera, renderer.domElement );
+                //        controls.autoRotate = true
+                controls.enableDamping  = true // 使控件具有重量感
+                controls.enabled  = true // 是否启用
+//                controls.target.set(1, 1, 1);
+
+                const dragControls = new DragControls( [ ... cubes ], camera, renderer.domElement );
+                dragControls.enabled = false // 是否启用
+                dragControls.addEventListener( 'drag', render );
+
+                // resize
+                function resizeFn() {
+                    function resizeRendererToDisplaySize(renderer) {
+                        const canvas = renderer.domElement;
+                        const width = canvas.clientWidth;
+                        const height = canvas.clientHeight;
+                        const needResize = canvas.width !== width || canvas.height !== height;
+                        if (needResize) {
+                            renderer.setSize(width, height, false);
+                        }
+                        return needResize;
+                    }
+
+                    if (resizeRendererToDisplaySize(renderer)) {
+                        const canvas = renderer.domElement;
+                        camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                        camera.updateProjectionMatrix();
+                    }
+                }
+
+                // 底部渲染与动画
+                function render() {
+                    renderer.render( scene, camera );
+                }
+                function animate() {
+
+//                    cubes.forEach((cube, ndx) => {
+//                        // const speed = 1 + ndx * .1;
+//                        // const rot = time * speed;
+//                        cube.rotation.x += 0.01 + 0.01 * ndx;
+//                        cube.rotation.y += 0.01 + 0.01 * ndx;
+//                    });
+
+                    // required if controls.enableDamping or controls.autoRotate are set to true
+                    controls.update();
+
+                    resizeFn()
+
+                    render()
+                    requestAnimationFrame( animate );
+
+                }
+                animate()
+			}
+			main()
+		</script>
+	</body>
+</html>

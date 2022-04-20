@@ -1,0 +1,403 @@
+<!--
+参考：https://threejs.org/manual/#zh/lights
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>控制器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Monospace;
+            backgroud: #f0f0f0;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<div id="wrap">
+    <canvas id="c"></canvas>
+</div>
+
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+
+
+
+
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+    import {GUI} from './js/lil-gui.module.min.js';
+
+    // 为了使用 RectAreaLight，我们需要引入 three.js 的RectAreaLightUniformsLib 模块，同时使用 RectAreaLightHelper 来辅助查看灯光对象。
+    import {RectAreaLightUniformsLib} from './jsm/lights/RectAreaLightUniformsLib.js';
+    import {RectAreaLightHelper} from './jsm/helpers/RectAreaLightHelper.js';
+
+    function main() {
+        // renderer
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+//        renderer.physicallyCorrectLights = true; // 是否使用物理上正确的光照模式
+
+        RectAreaLightUniformsLib.init();
+
+        // controls
+        const fov = 45;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 100;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.set(0, 10, 20);
+
+        // controls
+        const controls = new OrbitControls(camera, canvas);
+        controls.target.set(0, 5, 0);
+        controls.update();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('black');
+
+        // 绘制底部平面
+        {
+            const planeSize = 40;
+
+            // 加载纹理并重复包裹
+            const loader = new THREE.TextureLoader();
+            const texture = loader.load('./resources/images/checker.png');
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.magFilter = THREE.NearestFilter; // 当一个纹素覆盖大于一个像素时，贴图将如何采样。THREE.NearestFilter，它将使用最接近的纹素的值。
+            const repeats = planeSize / 2;
+            texture.repeat.set(repeats, repeats); // 设置重复次数
+
+            const planeGeo = new THREE.PlaneGeometry(planeSize, planeSize);
+            const planeMat = new THREE.MeshStandardMaterial({
+                map: texture,
+                side: THREE.DoubleSide,
+            });
+            const mesh = new THREE.Mesh(planeGeo, planeMat);
+            mesh.rotation.x = Math.PI * -.5;
+            scene.add(mesh);
+        }
+        // 立方几何体
+        {
+            const cubeSize = 4;
+            const cubeGeo = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+            const cubeMat = new THREE.MeshStandardMaterial({color: '#8AC'});
+            const mesh = new THREE.Mesh(cubeGeo, cubeMat);
+            mesh.position.set(cubeSize + 1, cubeSize / 2, 0);
+            scene.add(mesh);
+        }
+
+        // 球体
+        {
+            const sphereRadius = 3;
+            const sphereWidthDivisions = 32;
+            const sphereHeightDivisions = 16;
+            const sphereGeo = new THREE.SphereGeometry(sphereRadius, sphereWidthDivisions, sphereHeightDivisions);
+            const sphereMat = new THREE.MeshStandardMaterial({color: '#CA8'});
+            const mesh = new THREE.Mesh(sphereGeo, sphereMat);
+            mesh.position.set(-sphereRadius - 1, sphereRadius + 2, 0);
+            scene.add(mesh);
+        }
+
+        // gui helper
+        class ColorGUIHelper {
+            constructor(object, prop) {
+                this.object = object;
+                this.prop = prop;
+            }
+
+            get value() {
+                return `#${this.object[this.prop].getHexString()}`; // 将此颜色的十六进制值作为字符串返回
+            }
+
+            set value(hexString) {
+                this.object[this.prop].set(hexString);
+            }
+        }
+
+        // 生成光照位置 helper
+        function makeXYZGUI(gui, vector3, name, onChangeFn) {
+            const folder = gui.addFolder(name);
+            folder.add(vector3, 'x', -10, 10).onChange(onChangeFn);
+            folder.add(vector3, 'y', 0, 10).onChange(onChangeFn);
+            folder.add(vector3, 'z', -10, 10).onChange(onChangeFn);
+            folder.open();
+        }
+
+        // 度数与弧度转换的方法
+        class DegRadHelper {
+            constructor(obj, prop) {
+                this.obj = obj;
+                this.prop = prop;
+            }
+
+            get value() {
+                return THREE.Math.radToDeg(this.obj[this.prop]);
+            }
+
+            set value(v) {
+                this.obj[this.prop] = THREE.Math.degToRad(v);
+            }
+        }
+
+        // light
+        // 添加环境光 AmbientLight
+        function useAmbientLight() {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.AmbientLight(color, intensity);
+            scene.add(light);
+
+            // 生成gui
+            const gui = new GUI();
+            gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color'); // 颜色选择器
+            gui.add(light, 'intensity', 0, 2, 0.01); // 这里最后一个参数指的number控件滑动条单次过渡的大小
+        }
+
+        // 半球光 HemisphereLight
+        function useHemisphereLight() {
+            const skyColor = 0xB1E1FF;  // light blue
+            const groundColor = 0xB97A20;  // brownish orange
+            const intensity = 1;
+            const light = new THREE.HemisphereLight(skyColor, groundColor, intensity);
+            scene.add(light);
+
+            // 生成gui
+            const gui = new GUI();
+            gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('skyColor'); // 颜色选择器
+            gui.addColor(new ColorGUIHelper(light, 'groundColor'), 'value').name('groundColor');
+            gui.add(light, 'intensity', 0, 2, 0.01); // 这里最后一个参数指的number控件滑动条单次过渡的大小
+        }
+
+        // 方向光 DirectionalLight
+        function useDirectionalLight() {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(0, 10, 0);
+            light.target.position.set(-5, 0, 0);
+            scene.add(light);
+            scene.add(light.target);
+
+            // 添加helper
+            const helper = new THREE.DirectionalLightHelper(light);
+            scene.add(helper);
+
+            // gui change
+            function updateLight() {
+//                        light.updateMatrixWorld();
+                light.target.updateMatrixWorld(); // updateMatrixWorld是 Object3D 的方法
+                helper.update(); // 当辅助对象所表示的不可见对象有所改变的时候，我们必须调用辅助对象的 update 方法来更新辅助对象本身的状态。
+            }
+
+            updateLight();
+
+            // gui
+            const gui = new GUI();
+            gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color'); // 颜色选择器
+            gui.add(light, 'intensity', 0, 2, 0.01);
+//                    gui.add(light.target.position, 'x', -10, 10).onChange(updateLight);;
+//                    gui.add(light.target.position, 'z', -10, 10).onChange(updateLight);;
+//                    gui.add(light.target.position, 'y', 0, 10).onChange(updateLight);;
+
+            makeXYZGUI(gui, light.position, 'position', updateLight);
+            makeXYZGUI(gui, light.target.position, 'target', updateLight);
+        }
+
+        // 点光源 PointLight
+        function usePointLight() {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.PointLight(color, intensity);
+            light.position.set(0, 10, 0);
+            scene.add(light);
+
+            // 添加helper
+            const helper = new THREE.PointLightHelper(light);
+            scene.add(helper);
+
+            // gui change
+            function updateLight() {
+                helper.update(); // 当辅助对象所表示的不可见对象有所改变的时候，我们必须调用辅助对象的 update 方法来更新辅助对象本身的状态。
+            }
+
+            updateLight();
+
+            // gui
+            const gui = new GUI();
+            gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
+            gui.add(light, 'intensity', 0, 2, 0.01);
+            gui.add(light, 'distance', 0, 40).onChange(updateLight);
+            makeXYZGUI(gui, light.position, 'position', updateLight);
+
+        }
+
+        // 聚光灯 SpotLight
+        function useSpotLight() {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.SpotLight(color, intensity);
+            light.position.set(0, 10, 0);
+            scene.add(light);
+            scene.add(light.target);
+
+            // 添加helper
+            const helper = new THREE.SpotLightHelper(light);
+            scene.add(helper);
+
+            function updateLight() {
+                helper.update(); // 当辅助对象所表示的不可见对象有所改变的时候，我们必须调用辅助对象的 update 方法来更新辅助对象本身的状态。
+            }
+
+            updateLight();
+
+            // gui
+            const gui = new GUI();
+            gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
+            gui.add(light, 'intensity', 0, 2, 0.01); // 光照强度
+            gui.add(light, 'distance', 0, 40).onChange(updateLight); //  从光源发出光的最大距离，其强度根据光源的距离线性衰减
+            gui.add(new DegRadHelper(light, 'angle'), 'value', 0, 90).name('angle').onChange(updateLight);
+            gui.add(light, 'penumbra', 0, 1, 0.01);
+            gui.add(light.position, 'y', 0, 20).onChange(updateLight); // 光照点的位置
+        }
+
+        // 矩形区域光 RectAreaLight
+        // 注意：RectAreaLight 只能影响 MeshStandardMaterial 和 MeshPhysicalMaterial
+        // 为了使用 RectAreaLight，我们需要引入 three.js 的RectAreaLightUniformsLib 模块
+        function useRectAreaLight() {
+            const color = 0xFFFFFF;
+            const intensity = 5;
+            const width = 12;
+            const height = 4;
+            const light = new THREE.RectAreaLight(color, intensity, width, height);
+            light.position.set(0, 10, 0);
+            light.rotation.x = THREE.MathUtils.degToRad(-90);
+            scene.add(light);
+            // 需要注意的是，与方向光（DirectionalLight）和聚光灯（SpotLight）不同，矩形光不是使用目标点（target），而是使用自身的旋转角度来确定光照方向。
+            // 另外，矩形光的辅助对象（RectAreaLightHelper）应该添加为光照的子节点，而不是添加为场景的子节点。
+            const helper = new RectAreaLightHelper(light);
+            light.add(helper);
+
+            const gui = new GUI();
+            gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
+            gui.add(light, 'intensity', 0, 10, 0.01);
+            gui.add(light, 'width', 0, 20);
+            gui.add(light, 'height', 0, 20);
+            gui.add(new DegRadHelper(light.rotation, 'x'), 'value', -180, 180).name('x rotation');
+            gui.add(new DegRadHelper(light.rotation, 'y'), 'value', -180, 180).name('y rotation');
+            gui.add(new DegRadHelper(light.rotation, 'z'), 'value', -180, 180).name('z rotation');
+
+            makeXYZGUI(gui, light.position, 'position');
+        }
+
+        // 特别的：physicallyCorrectLights 模式
+        // 这个设置会影响（随着离光源的距离增加）光照如何减弱。
+        // 这个设置会影响点光源（PointLight）和聚光灯（SpotLight），矩形区域光（RectAreaLight）会自动应用这个特性。
+        function openPhysicallyCorrectLights() {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.PointLight(color, intensity);
+            light.position.set(0, 10, 0);
+            light.power = 800;
+            light.decay = 2;
+            light.distance = Infinity;
+            scene.add(light);
+
+            // 添加helper
+            const helper = new THREE.PointLightHelper(light);
+            scene.add(helper);
+
+            // gui change
+            function updateLight() {
+                helper.update(); // 当辅助对象所表示的不可见对象有所改变的时候，我们必须调用辅助对象的 update 方法来更新辅助对象本身的状态。
+            }
+            updateLight();
+
+            const gui = new GUI();
+            gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
+            gui.add(light, 'decay', 0, 4, 0.01);
+            gui.add(light, 'power', 0, 2000);
+            makeXYZGUI(gui, light.position, 'position', updateLight);
+        }
+
+        // 切换光线
+//        useAmbientLight() // 环境光 AmbientLight
+//        useHemisphereLight() // 半球光 HemisphereLight
+//        useDirectionalLight() // 方向光 DirectionalLight
+//        usePointLight() // 点光源 PointLight
+        useSpotLight() // 聚光灯 SpotLight
+//        useRectAreaLight() // 矩形区域光 RectAreaLight - 这个helper使用方式有区别，还需引入额外包
+//        openPhysicallyCorrectLights() // 特别的：physicallyCorrectLights 模式 renderer.physicallyCorrectLights = true时使用
+
+        {
+            // 显示坐标系
+            function showXYZ() {
+                // var axisHelper = new THREE.AxisHelper(250)
+                // scene.add(axisHelper); // 将线加入场景
+
+                // axisHelper改为了
+                scene.add(new THREE.AxesHelper(250));
+            }
+
+            showXYZ()
+        }
+
+
+        // resize
+        function resizeFn() {
+            function resizeRendererToDisplaySize(renderer) {
+                const canvas = renderer.domElement;
+                const width = canvas.clientWidth;
+                const height = canvas.clientHeight;
+                const needResize = canvas.width !== width || canvas.height !== height;
+                if (needResize) {
+                    renderer.setSize(width, height, false);
+                }
+                return needResize;
+            }
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+        }
+
+        function render() {
+
+            resizeFn()
+
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+    main();
+
+</script>
+</body>
+</html>
