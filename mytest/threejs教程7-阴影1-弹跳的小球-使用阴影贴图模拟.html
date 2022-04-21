@@ -1,0 +1,240 @@
+<!--
+参考：https://threejs.org/manual/#zh/lights
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>阴影</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Monospace;
+            backgroud: #f0f0f0;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .split {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+        }
+        .split>div {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<div id="wrap">
+    <canvas id="c"></canvas>
+</div>
+
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 45;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 100;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.set(0, 10, 20);
+        camera.lookAt(0, 0, 0);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('white');
+
+        const loader = new THREE.TextureLoader();
+
+        // 底部平面plane
+        {
+            const planeSize = 40;
+
+            const texture = loader.load('./resources/images/checker.png');
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.magFilter = THREE.NearestFilter;
+            const repeats = planeSize / 2;
+            texture.repeat.set(repeats, repeats);
+
+            const planeGeo = new THREE.PlaneGeometry(planeSize, planeSize);
+            const planeMat = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.DoubleSide,
+            });
+            planeMat.color.setRGB(1.5, 1.5, 1.5);
+            const mesh = new THREE.Mesh(planeGeo, planeMat);
+            mesh.rotation.x = Math.PI * -.5;
+            scene.add(mesh);
+        }
+
+        // 加载阴影贴图
+        const shadowTexture = loader.load('./resources/images/roundshadow.png');
+        const sphereShadowBases = [];
+        // 生成球体和阴影
+        {
+            // 定义球体
+            const sphereRadius = 1;
+            const sphereWidthDivisions = 32;
+            const sphereHeightDivisions = 16;
+            const sphereGeo = new THREE.SphereGeometry(sphereRadius, sphereWidthDivisions, sphereHeightDivisions);
+
+            // 阴影是贴在1x1大小的平面中
+            const planeSize = 1;
+            const shadowGeo = new THREE.PlaneGeometry(planeSize, planeSize);
+
+            const numSpheres = 15;// 生成15个球体
+            for (let i = 0; i < numSpheres; ++i) {
+                // make a base for the shadow and the sphere.
+                // so they move together.
+                const base = new THREE.Object3D();  // 对于每个球体都将创建一个基础的THREE.Object3D，并且我们将同时创建阴影平面网格和球体网格。这样，如果我们同时移动球体，阴影也一并移动，
+                scene.add(base);
+
+                // add the shadow to the base
+                // note: we make a new material for each sphere
+                // so we can set that sphere's material transparency
+                // separately.
+                const shadowMat = new THREE.MeshBasicMaterial({
+                    map: shadowTexture,
+                    transparent: true,    // so we can see the ground
+                    depthWrite: false,    // so we don't have to sort 防止 Z 轴阴影和地面重叠
+                });
+                const shadowMesh = new THREE.Mesh(shadowGeo, shadowMat);
+                shadowMesh.position.y = 0.001;  // so we're above the ground slightly  防止 Z 轴阴影和地面重叠
+                shadowMesh.rotation.x = Math.PI * -.5; // 因为plane是竖着的，这里把他翻转下
+                const shadowSize = sphereRadius * 4;
+                shadowMesh.scale.set(shadowSize, shadowSize, shadowSize); // 将阴影放大为球体的4倍
+                base.add(shadowMesh);
+
+                // 我们将每个球体使用不同的色相。
+                // add the sphere to the base
+                const u = i / numSpheres;
+                const sphereMat = new THREE.MeshPhongMaterial();
+                sphereMat.color.setHSL(u, 1, .75);
+                const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+                sphereMesh.position.set(0, sphereRadius + 2, 0);
+                base.add(sphereMesh);
+
+                // remember all 3 plus the y position 然后保存每个球体的基础、球体网格、阴影网格和初始 y 位置
+                sphereShadowBases.push({base, sphereMesh, shadowMesh, y: sphereMesh.position.y});
+            }
+        }
+
+        // 设置光源 - 半球光
+        {
+            const skyColor = 0xB1E1FF;  // light blue
+            const groundColor = 0xB97A20;  // brownish orange
+            const intensity = 0.25; // 光照强度
+            const light = new THREE.HemisphereLight(skyColor, groundColor, intensity);
+            scene.add(light);
+        }
+
+        // 设置光源 - 平行光
+        {
+            const color = 0xFFFFFF;
+            const intensity = 0.75;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(0, 10, 5);
+            light.target.position.set(-5, 0, 0);
+            scene.add(light);
+            scene.add(light.target);
+        }
+
+        // controls
+        const controls = new OrbitControls( camera, renderer.domElement );
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        // 显示坐标系
+        function showXYZ() {
+            scene.add(new THREE.AxesHelper(1500));
+        }
+        showXYZ()
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        function render(time) {
+            time *= 0.001;  // convert to seconds
+
+            resizeRendererToDisplaySize(renderer);
+
+            {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+//            现在我们设置球体动画并将其渲染。 对于每个球体，阴影以及 base，让它们在 XZ 平面上移动。
+//            使用Math.abs(Math.sin(time))将球体上下移动，这样会带来一个类似弹性的动画。
+//            并且我们还设置了阴影材质的不透明度，与球体的高度相关。高度越高，阴影越模糊。
+            sphereShadowBases.forEach((sphereShadowBase, ndx) => {
+                const {base, sphereMesh, shadowMesh, y} = sphereShadowBase;
+
+                // u is a value that goes from 0 to 1 as we iterate the spheres
+                const u = ndx / sphereShadowBases.length;
+
+                // compute a position for there base. This will move
+                // both the sphere and its shadow
+                const speed = time * .2;
+                const angle = speed + u * Math.PI * 2 * (ndx % 1 ? 1 : -1);
+                const radius = Math.sin(speed - ndx) * 10;
+                base.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+
+                // yOff is a value that goes from 0 to 1
+                const yOff = Math.abs(Math.sin(time * 2 + ndx));
+                // move the sphere up and down
+                sphereMesh.position.y = y + THREE.MathUtils.lerp(-2, 2, yOff);
+                // fade the shadow as the sphere goes up
+                shadowMesh.material.opacity = THREE.MathUtils.lerp(1, .25, yOff); // 设置了阴影材质的不透明度，与球体的高度相关。高度越高，阴影越模糊
+            });
+
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+</script>
+</body>
+</html>

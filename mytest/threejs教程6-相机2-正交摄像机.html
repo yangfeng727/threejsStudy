@@ -150,7 +150,7 @@
 
         // gui
         const gui = new GUI();
-        gui.add(camera, 'zoom', 0.01, 1, 0.01).listen(); // listen调用告诉lil-gui去监视属性的变化. 写在这里是因为OrbitControls同样可以控制缩放. 在这个例子中, 鼠标滚轮将会通过OrbitControls控件来控制缩放.
+        gui.add(camera, 'zoom', 0.01, 1, 0.01).listen(); // listen调用告诉lil-gui去监视属性的变化.zoom变化了要更新到gui控件上 写在这里是因为OrbitControls同样可以控制缩放. 在这个例子中, 鼠标滚轮将会通过OrbitControls控件来控制缩放.
 //        gui.add(camera, 'fov', 1, 180);
         const minMaxGUIHelper = new MinMaxGUIHelper(camera, 'near', 'far', 0.1); // 先实例化，然后操作此实例，利用get set拦截处理
 //        gui.add(minMaxGUIHelper, 'min', 0.1, 50, 0.1).name('near');
@@ -290,7 +290,7 @@
 
                 // 用计算出的aspect修改摄像机参数
 //                camera.aspect = aspect;
-                camera.left   = -aspect;
+                camera.left   = -aspect; // 因为之前定义camera时，左右上下都是1，这里aspect是width/height ，因此直接赋值即可，保持照相机的横纵比例
                 camera.right  =  aspect;
                 camera.updateProjectionMatrix();
                 cameraHelper.update();

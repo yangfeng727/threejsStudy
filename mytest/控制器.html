@@ -138,6 +138,7 @@
 
 				// 添加控制器
                 var controls = new OrbitControls( camera, renderer.domElement );
+                controls.target.set(2, 0, 2); // 设置物体围绕运动的点
                 //        controls.autoRotate = true
                 controls.enableDamping  = true // 使控件具有重量感
                 controls.enabled  = true // 是否启用

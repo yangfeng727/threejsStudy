@@ -55,11 +55,13 @@
 </script>
 <script type="module">
     import * as THREE from 'three';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
 
     function main() {
         const canvas = document.querySelector('#c');
         const renderer = new THREE.WebGLRenderer({canvas});
 
+        // 将左上角设置为正交相机原点 - 原点在左上, 就像是2D canvas
         const left = 0;
         const right = 300;  // default canvas size
         const top = 0;
@@ -67,10 +69,46 @@
         const near = -1;
         const far = 1;
         const camera = new THREE.OrthographicCamera(left, right, top, bottom, near, far);
+//        camera.position.set(0, 0, 1); //设置相机位置
         camera.zoom = 1;
+        camera.lookAt(0,0,0)
+
+//        var width = window.innerWidth; //窗口宽度
+//        var height = window.innerHeight; //窗口高度
+//        var k = width / height; //窗口宽高比
+//        var s = 200; //三维场景显示范围控制系数，系数越大，显示的范围越大
+//        //创建相机对象
+//        var camera = new THREE.OrthographicCamera(-s * k, s * k, s, -s, 1, 1000);
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color('black');
+
+        // 添加camera helper
+//        const cameraHelper = new THREE.CameraHelper(camera);
+//        scene.add(cameraHelper);
+
+//        // 添加灯光
+//        function addLight() {
+//            //自然光
+//            var ambientLight = new THREE.AmbientLight(0x606060);
+//            scene.add(ambientLight);
+//
+//            const color = 0xFFFFFF;
+//            const intensity = 1;
+//            const light = new THREE.DirectionalLight(color, intensity);
+//            light.position.set(-1, 2, 4);
+//            scene.add(light);
+//        }
+//
+//        addLight()
+
+//        const geometry = new THREE.BoxGeometry(1, 1, 1);
+//        const material = new THREE.MeshBasicMaterial({
+//            color: 0x8844aa,
+//        }); // 绿蓝色
+//
+//        let cube = new THREE.Mesh(geometry, material)
+//        scene.add(cube)
 
         const loader = new THREE.TextureLoader();
         const textures = [
@@ -83,6 +121,7 @@
         ];
         const planeSize = 256;
         const planeGeo = new THREE.PlaneGeometry(planeSize, planeSize);
+
         const planes = textures.map((texture) => {
             // 把每一个平面绑定到父对象THREE.Object3D上, 以便调整每个平面和左上角原点的相对关系
             const planePivot = new THREE.Object3D();
@@ -96,14 +135,21 @@
             planePivot.add(mesh);
             // move plane so top left corner is origin
             mesh.position.set(planeSize / 2, planeSize / 2, 0);
+
+//            mesh.add(new THREE.AxesHelper(100));
             return planePivot;
         });
 
         // 显示坐标系
         function showXYZ() {
-            scene.add(new THREE.AxesHelper(250));
+            scene.add(new THREE.AxesHelper(1500));
         }
         showXYZ()
+
+        // controls
+        var controls = new OrbitControls( camera, renderer.domElement );
+        controls.target.set(0, 0, 0);
+        controls.update();
 
         function resizeRendererToDisplaySize(renderer) {
             const canvas = renderer.domElement;
@@ -131,6 +177,7 @@
             // total distance to move across and back
             const xRange = distAcross * 2;
             const yRange = distDown * 2;
+
             const speed = 180;
 
             planes.forEach((plane, ndx) => {
