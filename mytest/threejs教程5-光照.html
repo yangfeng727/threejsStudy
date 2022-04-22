@@ -53,6 +53,8 @@
     import {RectAreaLightUniformsLib} from './jsm/lights/RectAreaLightUniformsLib.js';
     import {RectAreaLightHelper} from './jsm/helpers/RectAreaLightHelper.js';
 
+    const gui = new GUI();
+
     function main() {
         // renderer
         const canvas = document.querySelector('#c');
@@ -171,7 +173,7 @@
             scene.add(light);
 
             // 生成gui
-            const gui = new GUI();
+//            const gui = new GUI();
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color'); // 颜色选择器
             gui.add(light, 'intensity', 0, 2, 0.01); // 这里最后一个参数指的number控件滑动条单次过渡的大小
         }
@@ -185,7 +187,7 @@
             scene.add(light);
 
             // 生成gui
-            const gui = new GUI();
+//            const gui = new GUI();
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('skyColor'); // 颜色选择器
             gui.addColor(new ColorGUIHelper(light, 'groundColor'), 'value').name('groundColor');
             gui.add(light, 'intensity', 0, 2, 0.01); // 这里最后一个参数指的number控件滑动条单次过渡的大小
@@ -215,7 +217,7 @@
             updateLight();
 
             // gui
-            const gui = new GUI();
+//            const gui = new GUI();
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color'); // 颜色选择器
             gui.add(light, 'intensity', 0, 2, 0.01);
 //                    gui.add(light.target.position, 'x', -10, 10).onChange(updateLight);;
@@ -246,7 +248,7 @@
             updateLight();
 
             // gui
-            const gui = new GUI();
+//            const gui = new GUI();
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
             gui.add(light, 'intensity', 0, 2, 0.01);
             gui.add(light, 'distance', 0, 40).onChange(updateLight);
@@ -274,7 +276,7 @@
             updateLight();
 
             // gui
-            const gui = new GUI();
+//            const gui = new GUI();
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
             gui.add(light, 'intensity', 0, 2, 0.01); // 光照强度
             gui.add(light, 'distance', 0, 40).onChange(updateLight); //  从光源发出光的最大距离，其强度根据光源的距离线性衰减
@@ -300,7 +302,7 @@
             const helper = new RectAreaLightHelper(light);
             light.add(helper);
 
-            const gui = new GUI();
+//            const gui = new GUI();
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
             gui.add(light, 'intensity', 0, 10, 0.01);
             gui.add(light, 'width', 0, 20);
@@ -335,21 +337,70 @@
             }
             updateLight();
 
-            const gui = new GUI();
+//            const gui = new GUI();
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
             gui.add(light, 'decay', 0, 4, 0.01);
             gui.add(light, 'power', 0, 2000);
             makeXYZGUI(gui, light.position, 'position', updateLight);
         }
 
-        // 切换光线
-//        useAmbientLight() // 环境光 AmbientLight
-//        useHemisphereLight() // 半球光 HemisphereLight
-//        useDirectionalLight() // 方向光 DirectionalLight
-//        usePointLight() // 点光源 PointLight
-        useSpotLight() // 聚光灯 SpotLight
-//        useRectAreaLight() // 矩形区域光 RectAreaLight - 这个helper使用方式有区别，还需引入额外包
-//        openPhysicallyCorrectLights() // 特别的：physicallyCorrectLights 模式 renderer.physicallyCorrectLights = true时使用
+        // gui 切换光线 - 这里使用最简单的刷新页面
+        {
+            // 切换下拉
+            /**
+             * @title: 当前下拉作为独立panel的名称
+             * @arr：下拉显示项 eg:[xxx,xxxxx]
+             * @arrFn: 对应arr 触发选中当前项后的方法，arr.length === arrFn.length
+             * */
+            function addChangeTab(title,arr,arrFn) {
+                const folder = gui.addFolder(title); // 单独来个panel
+                let useTab = sessionStorage.getItem('TABKEY');
+                let index = arr.findIndex(item=>item === useTab) // 用于初次执行对应方法
+                if(!useTab) { // 初次进来没有值，赋值第一个
+                    sessionStorage.setItem('TABKEY', arr[0]);
+                    useTab = arr[0]
+                }
+                if(index <0){ // 兼容 TABKEY 在多个页面使用的情况，这种情况说明，当前TABKEY 是其他页面赋值的值，当前页面没有，因此需要重写赋值
+                    index = 0
+                    sessionStorage.setItem('TABKEY', arr[0]);
+                    useTab = arr[0]
+                }
+                arrFn[index]() // 默认执行
+
+                let obj = {
+                    changeTab: useTab // 下拉默认选中项
+                }
+                folder.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
+                    sessionStorage.setItem('TABKEY', val);
+                    window.location.reload() // 水平不够，暂未想到只更新部分内容的方法，来个最简单的直接刷新页面
+//               switch (val){
+//                   case arr[0]:
+//                       arrFn[0]()
+//                       break
+//                   case arr[1]:
+//                       arrFn[1]()
+//                       break
+//                   case arr[2]:
+//                       arrFn[2]()
+//                       break
+//               }
+                });
+            }
+
+            addChangeTab(
+                '光源切换',
+                ['环境光 AmbientLight','半球光 HemisphereLight','方向光 DirectionalLight','点光源 PointLight','聚光灯 SpotLight','矩形区域光 RectAreaLight','physicallyCorrectLights 模式'],
+                [ // 上面tab对应的方法
+                    useAmbientLight, // 环境光 AmbientLight
+                    useHemisphereLight, // 半球光 HemisphereLight
+                    useDirectionalLight, // 方向光 DirectionalLight
+                    usePointLight, // 点光源 PointLight
+                    useSpotLight, // 聚光灯 SpotLight
+                    useRectAreaLight, // 矩形区域光 RectAreaLight - 这个helper使用方式有区别，还需引入额外包
+                    openPhysicallyCorrectLights // 特别的：physicallyCorrectLights 模式 renderer.physicallyCorrectLights = true时使用,需要更改顶部代码才行
+                ])
+
+        }
 
         {
             // 显示坐标系

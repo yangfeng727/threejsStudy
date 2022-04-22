@@ -57,6 +57,7 @@
     import * as THREE from 'three';
     import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
     import {GUI} from './js/lil-gui.module.min.js';
+    const gui = new GUI();
 
     function main() {
         const canvas = document.querySelector('#c');
@@ -233,7 +234,7 @@
             onChange();
 
             // gui
-            const gui = new GUI();
+//            const gui = new GUI();
             // 光线相关的gui
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
             gui.add(light, 'intensity', 0, 2, 0.01);
@@ -302,7 +303,7 @@
             onChange();
 
             // gui
-            const gui = new GUI();
+//            const gui = new GUI();
             // 光线相关的gui
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
             gui.add(light, 'intensity', 0, 2, 0.01);
@@ -387,7 +388,7 @@
             onChange();
 
             // gui
-            const gui = new GUI();
+//            const gui = new GUI();
             // 光线相关的gui
             gui.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
             gui.add(light, 'intensity', 0, 2, 0.01);
@@ -419,9 +420,59 @@
             }
         }
 
-//        useDirectionalLight() // 设置光线与阴影相机 - 平行光 DirectionalLight
-//        useSpotLight() // 设置光线 - 聚光灯 SpotLight
-        usePointLight() //  设置光线 - 点光源 PointLight
+        // gui 生成光源切换下拉 - 这里使用最简单的刷新页面
+        {
+            // 切换下拉
+            /**
+             * @title: 当前下拉作为独立panel的名称
+             * @arr：下拉显示项 eg:[xxx,xxxxx]
+             * @arrFn: 对应arr 触发选中当前项后的方法，arr.length === arrFn.length
+             * */
+            function addChangeTab(title,arr,arrFn) {
+                const folder = gui.addFolder(title); // 单独来个panel
+                let useTab = sessionStorage.getItem('TABKEY');
+                let index = arr.findIndex(item=>item === useTab) // 用于初次执行对应方法
+                if(!useTab) { // 初次进来没有值，赋值第一个
+                    sessionStorage.setItem('TABKEY', arr[0]);
+                    useTab = arr[0]
+                }
+                if(index <0){ // 兼容 TABKEY 在多个页面使用的情况，这种情况说明，当前TABKEY 是其他页面赋值的值，当前页面没有，因此需要重写赋值
+                    index = 0
+                    sessionStorage.setItem('TABKEY', arr[0]);
+                    useTab = arr[0]
+                }
+                arrFn[index]() // 默认执行
+
+                let obj = {
+                    changeTab: useTab // 下拉默认选中项
+                }
+                folder.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
+                    sessionStorage.setItem('TABKEY', val);
+                    window.location.reload() // 水平不够，暂未想到只更新部分内容的方法，来个最简单的直接刷新页面
+//               switch (val){
+//                   case arr[0]:
+//                       arrFn[0]()
+//                       break
+//                   case arr[1]:
+//                       arrFn[1]()
+//                       break
+//                   case arr[2]:
+//                       arrFn[2]()
+//                       break
+//               }
+                });
+            }
+
+            addChangeTab(
+                '光源切换',
+                ['平行光 DirectionalLight','聚光灯 SpotLight','点光源 PointLight'],
+                [ // 上面tab对应的方法
+                    useDirectionalLight, // 设置光线与阴影相机 - 平行光 DirectionalLight
+                    useSpotLight, // 设置光线 - 聚光灯 SpotLight
+                    usePointLight //  设置光线 - 点光源 PointLight
+                ])
+
+        }
 
         function resizeRendererToDisplaySize(renderer) {
             const canvas = renderer.domElement;
