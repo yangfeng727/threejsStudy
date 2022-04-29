@@ -1,0 +1,241 @@
+<!--
+参考：https://threejs.org/manual/#zh/post-processing
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>自定义缓冲区-复杂案例-动态更新顶点数据，创建一个球面并从中央开始进进出出地移动每个四边形</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Monospace;
+            backgroud: #f0f0f0;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<div id="wrap">
+    <canvas id="c"></canvas>
+</div>
+
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+    import { OrbitControls } from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 100;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 3;
+
+        const scene = new THREE.Scene();
+
+//        light
+        function addLight(...pos) {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(...pos);
+            scene.add(light);
+        }
+        addLight(-1, 2, 4);
+        addLight( 2, -2, 3);
+
+       // 这里是用来产生球面的位置和索引数据的代码。代码共享了四边形内的顶点数据，但是四边形之间的没有共享，因为我们需要分别地移动每个四边形。
+       // 通过3个 Object3D 对象的层级关系，计算球面的点。
+
+        function makeSpherePositions(segmentsAround, segmentsDown) {
+            const numVertices = segmentsAround * segmentsDown * 6;
+            const numComponents = 3;
+            const positions = new Float32Array(numVertices * numComponents);
+            const indices = [];
+
+            const longHelper = new THREE.Object3D();
+            const latHelper = new THREE.Object3D();
+            const pointHelper = new THREE.Object3D();
+            longHelper.add(latHelper);
+            latHelper.add(pointHelper);
+            pointHelper.position.z = 1;
+            const temp = new THREE.Vector3();
+
+            function getPoint(lat, long) {
+                latHelper.rotation.x = lat;
+                longHelper.rotation.y = long;
+                longHelper.updateMatrixWorld(true);
+//                console.log(pointHelper.getWorldPosition(temp),pointHelper.getWorldPosition(temp).toArray())
+                return pointHelper.getWorldPosition(temp).toArray(); // 返回一个表示该物体在世界空间中位置的矢量。然后.toArray() 返回一个数组[x, y ,z]
+            }
+
+            let posNdx = 0;
+            let ndx = 0;
+            for (let down = 0; down < segmentsDown; ++down) {
+                const v0 = down / segmentsDown;
+                const v1 = (down + 1) / segmentsDown;
+                const lat0 = (v0 - 0.5) * Math.PI;
+                const lat1 = (v1 - 0.5) * Math.PI;
+
+                for (let across = 0; across < segmentsAround; ++across) {
+                    const u0 = across / segmentsAround;
+                    const u1 = (across + 1) / segmentsAround;
+                    const long0 = u0 * Math.PI * 2;
+                    const long1 = u1 * Math.PI * 2;
+
+                    // Float32Array.prototype.set() 方法用于从指定数组中读取值，并将其存储在类型化数组中。
+                    positions.set(getPoint(lat0, long0), posNdx);  posNdx += numComponents;
+                    positions.set(getPoint(lat1, long0), posNdx);  posNdx += numComponents;
+                    positions.set(getPoint(lat0, long1), posNdx);  posNdx += numComponents;
+                    positions.set(getPoint(lat1, long1), posNdx);  posNdx += numComponents;
+
+                    // 设置缓冲index
+                    indices.push(
+                        ndx, ndx + 1, ndx + 2,
+                        ndx + 2, ndx + 1, ndx + 3,
+                    );
+                    ndx += 4;
+                }
+            }
+            return {positions, indices};
+        }
+
+        const segmentsAround = 24;
+        const segmentsDown = 16;
+        const {positions, indices} = makeSpherePositions(segmentsAround, segmentsDown);
+
+        // 返回的位置数据是单位球面位置，所以它们跟我们需要的法线数据完全一样，我们只需要复制它们。
+        const normals = positions.slice();
+
+        const geometry = new THREE.BufferGeometry();
+        const positionNumComponents = 3;
+        const normalNumComponents = 3;
+
+        // 我们保存了位置属性的引用。 同时我们标记它为动态。这是提示THREE.js我们将会经常改变属性的内容。
+        const positionAttribute = new THREE.BufferAttribute(positions, positionNumComponents);
+        positionAttribute.setUsage(THREE.DynamicDrawUsage); // 标记它为动态。这是提示THREE.js我们将会经常改变属性的内容
+        geometry.setAttribute(
+            'position',
+            positionAttribute);
+        geometry.setAttribute(
+            'normal',
+            new THREE.BufferAttribute(normals, normalNumComponents));
+        geometry.setIndex(indices);
+
+        // 生成网格模型
+        function makeInstance(geometry, color, x) {
+            const material = new THREE.MeshPhongMaterial({
+                color,
+                side: THREE.DoubleSide,
+                shininess: 100, // 高亮
+            });
+
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            cube.position.x = x;
+            return cube;
+        }
+
+        const cubes = [
+            makeInstance(geometry, 0xFF0000, 0),
+        ];
+
+        const size = 10;
+        const divisions = 10;
+        const gridHelper = new THREE.GridHelper( size, divisions );
+        scene.add( gridHelper );
+
+        // 显示坐标系
+        function showXYZ() {
+            // var axisHelper = new THREE.AxisHelper(250)
+            // scene.add(axisHelper); // 将线加入场景
+
+            // axisHelper改为了
+            scene.add(new THREE.AxesHelper(250));
+        }
+        showXYZ()
+        // 添加控制器
+        const controls = new OrbitControls( camera, renderer.domElement );
+        controls.update()
+
+//        resize
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        const temp = new THREE.Vector3();
+
+        function render(time) {
+            time *= 0.001;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            for (let i = 0; i < positions.length; i += 3) {
+                const quad = (i / 12 | 0);
+                const ringId = quad / segmentsAround | 0;
+                const ringQuadId = quad % segmentsAround;
+                const ringU = ringQuadId / segmentsAround;
+                const angle = ringU * Math.PI * 2;
+                temp.fromArray(normals, i);
+                temp.multiplyScalar(THREE.MathUtils.lerp(1, 1.4, Math.sin(time + ringId + angle) * .5 + .5));
+                temp.toArray(positions, i);
+            }
+            positionAttribute.needsUpdate = true; // 该标志位指明当前 attribute 已经被修改过，且需要再次送入 GPU 处理。当开发者改变了该队列的值，则标志位需要设置为 true。
+
+            cubes.forEach((cube, ndx) => {
+                const speed = -0.2 + ndx * .1;
+                const rot = time * speed;
+                cube.rotation.y = rot;
+            });
+
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+
+</script>
+</body>
+</html>

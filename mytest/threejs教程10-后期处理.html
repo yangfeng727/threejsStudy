@@ -1,0 +1,215 @@
+<!--
+参考：https://threejs.org/manual/#zh/post-processing
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>后期处理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Monospace;
+            backgroud: #f0f0f0;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<div id="wrap">
+    <canvas id="c"></canvas>
+</div>
+
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+
+    import {EffectComposer} from './jsm/postprocessing/EffectComposer.js';
+    import {RenderPass} from './jsm/postprocessing/RenderPass.js';
+    import {BloomPass} from './jsm/postprocessing/BloomPass.js';
+    import {FilmPass} from './jsm/postprocessing/FilmPass.js';
+
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 5;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 2;
+
+        const scene = new THREE.Scene();
+
+//        light
+        {
+            const color = 0xFFFFFF;
+            const intensity = 2;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(-1, 2, 4);
+            scene.add(light);
+        }
+
+        // 创建几何体
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        function makeInstance(geometry, color, x) {
+            const material = new THREE.MeshPhongMaterial({color});
+
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            cube.position.x = x;
+
+            return cube;
+        }
+
+        const cubes = [
+            makeInstance(geometry, 0x44aa88, 0),
+            makeInstance(geometry, 0x8844aa, -2),
+            makeInstance(geometry, 0xaa8844, 2),
+        ];
+
+        // 后期处理
+        const composer = new EffectComposer(renderer);
+        // 作为第一个pass，我们添加一个RenderPass，它会将我们的场景scene和我们的相机camera渲染到第一个渲染目标
+        composer.addPass(new RenderPass(scene, camera)); // 先将场景相机传进去 进行后期处理
+
+//        BloomPass将它的输入放入一个通常来说更小的render target然后对这个结果的表面进行模糊处理
+        const bloomPass = new BloomPass(
+            1,    // strength
+            25,   // kernel size
+            4,    // sigma ?
+            256,  // blur render target resolution
+        );
+        composer.addPass(bloomPass);
+
+        // 我们用FilmPass来添加噪点和扫描线
+        const filmPass = new FilmPass(
+            0.35,   // noise intensity
+            0.025,  // scanline intensity
+            648,    // scanline count
+            false,  // grayscale
+        );
+        filmPass.renderToScreen = true; // 由于filmPass是最后一次传递，我们将其renderToScreen属性设置为true来告诉它渲染到画布
+        composer.addPass(filmPass);
+
+        // 添加各自pass的gui
+        const gui = new GUI();
+        {
+            const folder = gui.addFolder('BloomPass');
+            folder.add(bloomPass.combineUniforms.strength, 'value', 0, 2).name('strength');
+            folder.open();
+        }
+        {
+            const folder = gui.addFolder('FilmPass');
+            folder.add(filmPass.uniforms.grayscale, 'value').name('grayscale');
+            folder.add(filmPass.uniforms.nIntensity, 'value', 0, 1).name('noise intensity');
+            folder.add(filmPass.uniforms.sIntensity, 'value', 0, 1).name('scanline intensity');
+            folder.add(filmPass.uniforms.sCount, 'value', 0, 1000).name('scanline count');
+            folder.open();
+        }
+
+
+        // 着色器 --- 没看懂
+/*        const colorShader = {
+            uniforms: {
+                tDiffuse: {value: null},
+                color: {value: new THREE.Color(0x88CCFF)},
+            },
+            vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                      vUv = uv;
+                      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1);
+                    }
+                  `,
+            fragmentShader: `
+                                varying vec2 vUv;
+                                uniform sampler2D tDiffuse;
+                                uniform vec3 color;
+                                void main() {
+                                  vec4 previousPassColor = texture2D(tDiffuse, vUv);
+                                  gl_FragColor = vec4(
+                                      previousPassColor.rgb * color,
+                                      previousPassColor.a);
+                                }
+                                `,
+        };
+        const gui = new GUI();
+        gui.add(colorPass.uniforms.color.value, 'r', 0, 4).name('red');
+        gui.add(colorPass.uniforms.color.value, 'g', 0, 4).name('green');
+        gui.add(colorPass.uniforms.color.value, 'b', 0, 4).name('blue');*/
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        let then = 0;
+
+//        们需要做的最后一件事是使用EffectComposer.render 替代 WebGLRenderer.render 并告诉EffectComposer来匹配画布的大小
+        function render(now) {
+            now *= 0.001;  // convert to seconds
+            const deltaTime = now - then;
+            then = now;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+                composer.setSize(canvas.width, canvas.height); // EffectComposer匹配画布的大小
+            }
+
+            cubes.forEach((cube, ndx) => {
+                const speed = 1 + ndx * .1;
+                const rot = now * speed;
+                cube.rotation.x = rot;
+                cube.rotation.y = rot;
+            });
+
+//            renderer.render(scene, camera);
+            composer.render(deltaTime);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+
+</script>
+</body>
+</html>

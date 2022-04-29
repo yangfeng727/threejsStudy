@@ -1,0 +1,207 @@
+<!--
+参考：https://threejs.org/manual/#zh/lights
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>渲染目标</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Monospace;
+            backgroud: #f0f0f0;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<div id="wrap">
+    <canvas id="c"></canvas>
+</div>
+
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+
+
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        // 渲染目标相关 场景、相机、几何体等 start ------
+        // 在three.js中，渲染目标大体上指的是可以被渲染的纹理。当它被渲染之后，你可以像使用其他纹理一样使用它。
+
+        // 简单来说就是像纹理一样使用。将渲染目标按场景渲染下，然后把这个场景当做纹理来使用
+        // 渲染汽车的后视镜，或者3D场景中的监控实时画面，都可能用到渲染目标。阴影也是利用渲染目标实现的
+
+        const rtWidth = 512;
+        const rtHeight = 512;
+        // 渲染目标
+        const renderTarget = new THREE.WebGLRenderTarget(rtWidth, rtHeight,{
+            depthBuffer: false,
+            stencilBuffer: false,
+        });
+
+        const rtFov = 75;
+        const rtAspect = rtWidth / rtHeight;
+        const rtNear = 0.1;
+        const rtFar = 5;
+        const rtCamera = new THREE.PerspectiveCamera(rtFov, rtAspect, rtNear, rtFar);
+        rtCamera.position.z = 2;
+
+        const rtScene = new THREE.Scene();
+        rtScene.background = new THREE.Color('red');
+
+        // light
+        {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(-1, 2, 4);
+            rtScene.add(light);
+        }
+
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        function makeInstance(geometry, color, x) {
+            const material = new THREE.MeshPhongMaterial({color});
+
+            const cube = new THREE.Mesh(geometry, material);
+            rtScene.add(cube);
+
+            cube.position.x = x;
+
+            return cube;
+        }
+
+        const rtCubes = [
+            makeInstance(geometry, 0x44aa88,  0),
+            makeInstance(geometry, 0x8844aa, -2),
+            makeInstance(geometry, 0xaa8844,  2),
+        ];
+
+        // 渲染目标相关 场景、相机、几何体等 end ------
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 5;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 2;
+
+        const scene = new THREE.Scene();
+
+        // light
+        {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(-1, 2, 4);
+            scene.add(light);
+        }
+
+        const material = new THREE.MeshPhongMaterial({
+            map: renderTarget.texture, // 添加使用了渲染目标纹理的方块
+        });
+        const cube = new THREE.Mesh(geometry, material);
+        cube.position.x = -1
+        scene.add(cube);
+
+        // 这里对比下，来个不动的方块
+        const cube2 = new THREE.Mesh(geometry, material);
+        cube2.position.x = 1
+        scene.add(cube2);
+
+        // 显示坐标系
+        function showXYZ() {
+            // var axisHelper = new THREE.AxisHelper(250)
+            // scene.add(axisHelper); // 将线加入场景
+
+            // axisHelper改为了
+            scene.add(new THREE.AxesHelper(250));
+        }
+        showXYZ()
+
+        // resize
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        function render(time) {
+            time *= 0.001;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+
+                // 如果要改变渲染目标的尺寸 - 这里只是个例子，这里是跟画布一样尺寸的渲染目标的resize
+//                renderTarget.setSize(canvas.width, canvas.height);
+//                rtCamera.aspect = camera.aspect;
+//                rtCamera.updateProjectionMatrix();
+            }
+
+            // rotate all the cubes in the render target scene
+            rtCubes.forEach((cube, ndx) => {
+                const speed = 1 + ndx * .1;
+                const rot = time * speed;
+                cube.rotation.x = rot;
+                cube.rotation.y = rot;
+            });
+
+            // 现在在渲染的时候，我们首先将渲染目标的场景(rtScene)，渲染到渲染目标
+            // draw render target scene to render target
+            renderer.setRenderTarget(renderTarget);
+            renderer.render(rtScene, rtCamera);
+            renderer.setRenderTarget(null);
+
+            // rotate the cube in the scene
+            cube.rotation.x = time;
+            cube.rotation.y = time * 1.1;
+
+//            在画布中，渲染使用了渲染目标纹理的方块的场景。
+            // render the scene to the canvas
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+
+</script>
+</body>
+</html>
