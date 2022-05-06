@@ -57,6 +57,13 @@
     import * as THREE from 'three';
     import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
 
+    /*
+    实现原理，
+    没有开启阴影相关属性，这里的阴影是阴影贴图实现的，悬浮在平面上0.001位置，防止 Z 轴阴影和地面重叠，
+    阴影为球体的4倍大小，透明度和球体的y轴高度有关，
+    为了球体运动时阴影跟着运动，两个是在同一个Object3D对象中，移动的时候移动此对象即可
+    */
+
     function main() {
         const canvas = document.querySelector('#c');
         const renderer = new THREE.WebGLRenderer({canvas});

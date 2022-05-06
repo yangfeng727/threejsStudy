@@ -59,10 +59,24 @@
     import {GUI} from './js/lil-gui.module.min.js';
     const gui = new GUI();
 
+    /*
+    启用Threejs自己计算并生成阴影
+     1.需要 renderer.shadowMap.enabled = true; //  如果设置开启，允许在场景中使用阴影贴图
+     2.几何体需要开启阴影相关属性：
+     mesh.castShadow = true; // 对象是否被渲染到阴影贴图中，也就是当前物体能投射阴影
+     mesh.receiveShadow = true; // 材质是否接收阴影,也就是当前物体能被投射阴影
+
+     3.光线
+     light.castShadow = true; // 设置光能投射阴影
+     下面的设置（可选）
+     //  被投射产生的阴影也是有纹理的，这些阴影的纹理也是有单位大小的。如果阴影相机的属性设置的越大，就意味着它能投射的区域也变得很大，就意味着投射的阴影会越来越块状。
+     light.shadow.mapSize.width = 1024 // 可设置这两个属性，但是会占用更多的内存，并且变得很慢
+     light.shadow.mapSize.heigt = 1024
+    */
     function main() {
         const canvas = document.querySelector('#c');
         const renderer = new THREE.WebGLRenderer({canvas});
-        renderer.shadowMap.enabled = true; // 如果设置, 请在场景中使用阴影贴图
+        renderer.shadowMap.enabled = true; // 如果设置开启，允许在场景中使用阴影贴图
 
         const fov = 45;
         const aspect = 2;  // the canvas default
@@ -422,14 +436,15 @@
 
         // gui 生成光源切换下拉 - 这里使用最简单的刷新页面
         {
-            // 切换下拉
             /**
              * @title: 当前下拉作为独立panel的名称
              * @arr：下拉显示项 eg:[xxx,xxxxx]
              * @arrFn: 对应arr 触发选中当前项后的方法，arr.length === arrFn.length
+             * @addFolder: 是否新建一个父节点
              * */
-            function addChangeTab(title,arr,arrFn) {
-                const folder = gui.addFolder(title); // 单独来个panel
+            function addChangeTab(title,arr,arrFn, addFolder = true) {
+                let parent = addFolder?gui.addFolder(title):gui;
+//                const folder = gui.addFolder(title); // 单独来个panel
                 let useTab = sessionStorage.getItem('TABKEY');
                 let index = arr.findIndex(item=>item === useTab) // 用于初次执行对应方法
                 if(!useTab) { // 初次进来没有值，赋值第一个
@@ -446,7 +461,8 @@
                 let obj = {
                     changeTab: useTab // 下拉默认选中项
                 }
-                folder.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
+                // 给obj对象开启gui控制，当changeTab属性发生变化，设置对应的值到sessionStorage，页面刷新则初始执行对应方法，达到切换目的
+                parent.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
                     sessionStorage.setItem('TABKEY', val);
                     window.location.reload() // 水平不够，暂未想到只更新部分内容的方法，来个最简单的直接刷新页面
 //               switch (val){

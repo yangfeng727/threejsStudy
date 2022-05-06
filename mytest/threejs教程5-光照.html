@@ -370,6 +370,7 @@
                 let obj = {
                     changeTab: useTab // 下拉默认选中项
                 }
+                // 给obj对象开启gui控制，当changeTab属性发生变化，设置对应的值到sessionStorage，页面刷新则初始执行对应方法，达到切换目的
                 folder.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
                     sessionStorage.setItem('TABKEY', val);
                     window.location.reload() // 水平不够，暂未想到只更新部分内容的方法，来个最简单的直接刷新页面
