@@ -1,0 +1,370 @@
+<!--
+参考：https://threejs.org/manual/#zh/transparency
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>如何绘制透明的物体</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Monospace;
+            backgroud: #f0f0f0;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+            /*background: url(./resources/images/daikanyama.jpg) no-repeat center center ;*/
+            /*background-size: cover;*/
+        }
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<div id="wrap">
+    <canvas id="c"></canvas>
+</div>
+
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+
+    function main() {
+        const gui = new GUI();
+
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 25;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 4;
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('white');
+
+        function addLight(...pos) {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(...pos);
+            scene.add(light);
+        }
+        addLight(-1, 2, 4);
+        addLight( 1, -1, -2);
+
+        // 绘制透明立方体
+        function BoxOpacityGeometry(){
+            const boxWidth = 1;
+            const boxHeight = 1;
+            const boxDepth = 1;
+            const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+            // 解决3d物体的一般性绘制方式
+            // 对于一个凸状物体，比如球体或是立方体，一种解决方案是将每一个立方体添加到场景中两次。一次带有仅绘制后面三角形的材质，另外一次带有仅绘制前面三角形的材质。
+            function makeInstance(geometry, color, x, y, z) {
+                [THREE.BackSide, THREE.FrontSide].forEach((side) => {
+                    const material = new THREE.MeshPhongMaterial({
+                        color,
+                        opacity: 0.5,
+                        transparent: true,
+                        side,
+                    });
+
+                    const cube = new THREE.Mesh(geometry, material);
+                    scene.add(cube);
+
+                    cube.position.set(x, y, z);
+                });
+            }
+
+            function hsl(h, s, l) {
+                return (new THREE.Color()).setHSL(h, s, l); // 采用HLS值设置此颜色。【色相，饱和度，亮度】
+            }
+
+            {
+                const d = 0.8;
+                makeInstance(geometry, hsl(0 / 8, 1, .5), -d, -d, -d);
+                makeInstance(geometry, hsl(1 / 8, 1, .5),  d, -d, -d);
+                makeInstance(geometry, hsl(2 / 8, 1, .5), -d,  d, -d);
+                makeInstance(geometry, hsl(3 / 8, 1, .5),  d,  d, -d);
+                makeInstance(geometry, hsl(4 / 8, 1, .5), -d, -d,  d);
+                makeInstance(geometry, hsl(5 / 8, 1, .5),  d, -d,  d);
+                makeInstance(geometry, hsl(6 / 8, 1, .5), -d,  d,  d);
+                makeInstance(geometry, hsl(7 / 8, 1, .5),  d,  d,  d);
+            }
+        }
+
+        // 绘制透明的带有纹理的平面 - 出现虽然是透明的但是后面的元素不渲染问题
+        function TextureOpactiyPlane() {
+            camera.position.set(0.5, 1, 0.5); // 镜头拉近点
+
+            const planeWidth = 1;
+            const planeHeight = 1;
+            const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+            const loader = new THREE.TextureLoader();
+
+            function makeInstance(geometry, color, rotY, url) {
+                const texture = loader.load(url, render); // 注意:我们将render 函数传递到了纹理加载函数中这样当纹理加载完成的时候，可以重新渲染场景。这是因为这个例子是使用 按需渲染代替了持续渲染。
+                const material = new THREE.MeshPhongMaterial({
+                    color,
+                    map: texture,
+                    opacity: 0.5,
+                    transparent: true,
+                    side: THREE.DoubleSide,
+                });
+
+                const mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+
+                mesh.rotation.y = rotY;
+            }
+
+            makeInstance(geometry, 'pink',       0,             'resources/images/happyface.png');
+            makeInstance(geometry, 'lightblue',  Math.PI * 0.5, 'resources/images/hmmmface.png');
+        }
+
+        // 绘制透明的带有纹理的平面 - 解决透明问题
+        // 解决方案是手动的将每个平面分割为2个，这样它们实际上就没有了交集。再利用纹理的offset和repeat对纹理坐标进行调整
+        // 这种解决方案真的只能用于像2个不会改变相交位置的简单物体。
+        // 对于添加了纹理的物体，还有一种解决方案是设置alpha测试。
+        function TextureOpactiyPlaneDeal() {
+            camera.position.set(0.5, 1, 0.5); // 镜头拉近点
+
+            const planeWidth = 0.5;
+            const planeHeight = 1;
+            const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+            const loader = new THREE.TextureLoader();
+
+            function makeInstance(geometry, color, rotY, url) {
+                const base = new THREE.Object3D();
+                scene.add(base);
+                base.rotation.y = rotY;
+
+                [-1, 1].forEach((x) => {
+                    const texture = loader.load(url, render);
+                    texture.offset.x = x < 0 ? 0 : 0.5;
+                    texture.repeat.x = .5;
+                    const material = new THREE.MeshPhongMaterial({
+                        color,
+                        map: texture,
+                        opacity: 0.5,
+                        transparent: true,
+                        side: THREE.DoubleSide,
+                    });
+
+                    const mesh = new THREE.Mesh(geometry, material);
+                    base.add(mesh);
+
+                    mesh.position.x = x * .25;
+                });
+            }
+
+            makeInstance(geometry, 'pink',       0,             'resources/images/happyface.png');
+            makeInstance(geometry, 'lightblue',  Math.PI * 0.5, 'resources/images/hmmmface.png');
+        }
+
+        // alpha 测试
+        // Alpha测试是指像素的alpha值低于某个水平的时候，three.js就不会绘制它。如果我们根本就不绘制某个像素，那么上面提到的深度问题就消失了。
+        // 对于具有相对尖锐边缘的纹理，这种方式工作得很好。例子中包含了树或植物上的叶子纹理或者一片草地。
+        function alphaTestDeal() {
+            camera.position.set(0.5, 1, 0.5); // 镜头拉近点
+
+            const planeWidth = 1;
+            const planeHeight = 1;
+            const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+            const loader = new THREE.TextureLoader();
+
+            function makeInstance(geometry, color, rotY, url) {
+                const texture = loader.load(url, render);
+                const material = new THREE.MeshPhongMaterial({
+                    color,
+                    map: texture,
+                    alphaTest: 0.5, // 设置运行alphaTest时要使用的alpha值。如果不透明度低于此值，则不会渲染材质
+                    transparent: true,
+                    side: THREE.DoubleSide,
+                });
+
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.name = '纹理'+rotY
+                scene.add(mesh);
+
+                mesh.rotation.y = rotY;
+            }
+
+            makeInstance(geometry, 'white', 0,             './resources/images/tree-01.png');
+            makeInstance(geometry, 'white', Math.PI * 0.5, './resources/images/tree-02.png');
+
+            // gui - 这里是通过 scene.traverse 去找到material并更改alphaTest 或者 transparent ， 是不是也可以直接通过scene.children去找？
+            class AllMaterialPropertyGUIHelper {
+                constructor(prop, scene) {
+                    this.prop = prop;
+                    this.scene = scene;
+                }
+                get value() {
+                    const {scene, prop} = this;
+                    let v;
+                    scene.traverse((obj) => {
+//                        console.log(obj, 666)
+                        if (obj.material && obj.material[prop] !== undefined) {
+                            v = obj.material[prop];
+                        }
+                    });
+                    return v;
+                }
+                set value(v) {
+                    const {scene, prop} = this;
+                    scene.traverse((obj) => {
+                        if (obj.material && obj.material[prop] !== undefined) {
+                            obj.material[prop] = v;
+                            obj.material.needsUpdate = true;
+                        }
+                    });
+                }
+            }
+
+            gui.add(new AllMaterialPropertyGUIHelper('alphaTest', scene), 'value', 0, 1)
+                .name('alphaTest')
+                .onChange(requestRenderIfNotRequested);
+            gui.add(new AllMaterialPropertyGUIHelper('transparent', scene), 'value')
+                .name('transparent')
+                .onChange(requestRenderIfNotRequested);
+
+            console.log(scene, 5555)
+        }
+
+        // 添加helper
+        const gridHelper = new THREE.GridHelper( 40, 40 );
+        scene.add( gridHelper );
+        scene.add(new THREE.AxesHelper(250));
+
+        // gui 切换光线 - 这里使用最简单的刷新页面
+        {
+            // 切换下拉
+            /**
+             * @title: 当前下拉作为独立panel的名称
+             * @arr：下拉显示项 eg:[xxx,xxxxx]
+             * @arrFn: 对应arr 触发选中当前项后的方法，arr.length === arrFn.length
+             * @addFolder: 是否新建一个父节点
+             * */
+            function addChangeTab(title,arr,arrFn, addFolder = true) {
+                let parent = addFolder?gui.addFolder(title):gui;
+//                const folder = gui.addFolder(title); // 单独来个panel
+                let useTab = sessionStorage.getItem('TABKEY');
+                let index = arr.findIndex(item=>item === useTab) // 用于初次执行对应方法
+                if(!useTab) { // 初次进来没有值，赋值第一个
+                    sessionStorage.setItem('TABKEY', arr[0]);
+                    useTab = arr[0]
+                }
+                if(index <0){ // 兼容 TABKEY 在多个页面使用的情况，这种情况说明，当前TABKEY 是其他页面赋值的值，当前页面没有，因此需要重写赋值
+                    index = 0
+                    sessionStorage.setItem('TABKEY', arr[0]);
+                    useTab = arr[0]
+                }
+
+                let obj = {
+                    changeTab: useTab // 下拉默认选中项
+                }
+                // 给obj对象开启gui控制，当changeTab属性发生变化，设置对应的值到sessionStorage，页面刷新则初始执行对应方法，达到切换目的
+                parent.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
+                    sessionStorage.setItem('TABKEY', val);
+                    window.location.reload() // 水平不够，暂未想到只更新部分内容的方法，来个最简单的直接刷新页面
+//               switch (val){
+//                   case arr[0]:
+//                       arrFn[0]()
+//                       break
+//                   case arr[1]:
+//                       arrFn[1]()
+//                       break
+//                   case arr[2]:
+//                       arrFn[2]()
+//                       break
+//               }
+                });
+
+                arrFn[index]() // 默认执行
+            }
+
+            addChangeTab(
+                'demo切换',
+                ['透明立方体','制透明的带有纹理的平面 - 有问题','制透明的带有纹理的平面 - 解决问题','添加了纹理的物体设置alpha测试'],
+                [ // 上面tab对应的方法
+                    BoxOpacityGeometry, // 绘制透明立方体 - 比如球体或是立方体，一种解决方案是将每一个立方体添加到场景中两次。一次带有仅绘制后面三角形的材质，另外一次带有仅绘制前面三角形的材质
+                    TextureOpactiyPlane, // 绘制透明的带有纹理的平面 - 有问题的案例
+                    TextureOpactiyPlaneDeal, // 绘制透明的带有纹理的平面 - 解决问题的案例
+                    alphaTestDeal
+                ],false)
+        }
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        let renderRequested = false;
+
+        function render() {
+            renderRequested = undefined;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        render();
+
+        function requestRenderIfNotRequested() {
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(render);
+            }
+        }
+
+        // 按需渲染
+        controls.addEventListener('change', requestRenderIfNotRequested);
+        window.addEventListener('resize', requestRenderIfNotRequested);
+    }
+
+    main();
+
+
+
+</script>
+</body>
+</html>

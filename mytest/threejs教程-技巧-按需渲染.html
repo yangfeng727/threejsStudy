@@ -1,0 +1,182 @@
+<!--
+参考：https://threejs.org/manual/#zh/rendering-on-demand
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>按需渲染</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Monospace;
+            backgroud: #f0f0f0;
+            margin: 0px;
+            overflow: hidden;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+            /*background: url(./resources/images/daikanyama.jpg) no-repeat center center ;*/
+            /*background-size: cover;*/
+        }
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<div id="wrap">
+    <canvas id="c"></canvas>
+</div>
+
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+
+    /*
+     使用了requestAnimationFrame循环或者写成rAF loop
+     有些场景连续渲染是有意义的, 但是有些情况下不需要一直动呢? 这种情况下不断地渲染会浪费电, 对于移动设备来说属实不能接受.
+     显而易见的解决方法是一开始的时候渲染一次, 只有当什么东西改变了以后再次渲染. 这种改变包括纹理的变化, 或者再入了模型, 其他源传来了什么数据, 用户调整了设置或者是动了摄像机.
+    */
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 5;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 2;
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true; // 开启重力感
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        const scene = new THREE.Scene();
+
+        {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(-1, 2, 4);
+            scene.add(light);
+        }
+
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        const gui = new GUI();
+        class ColorGUIHelper {
+            constructor(object, prop) {
+                this.object = object;
+                this.prop = prop;
+            }
+            get value() {
+//                console.log(this.object[this.prop], 3)
+                return `#${this.object[this.prop].getHexString()}`; // 将此颜色的十六进制值作为字符串返回 (例如, 'FFFFFF')。
+            }
+            set value(hexString) {
+//                console.log(hexString, 44) // eg: #687d76
+                this.object[this.prop].set(hexString);
+            }
+        }
+
+        function makeInstance(geometry, color, x) {
+            const material = new THREE.MeshPhongMaterial({color});
+
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            cube.position.x = x;
+
+            // 添加gui
+            const folder = gui.addFolder(`Cube${x}`);
+            folder.addColor(new ColorGUIHelper(material, 'color'), 'value')
+                .name('color')
+                .onChange(requestRenderIfNotRequested);
+            folder.add(cube.scale, 'x', .1, 1.5)
+                .name('scale x')
+                .onChange(requestRenderIfNotRequested);
+            folder.open();
+
+            return cube;
+        }
+
+        makeInstance(geometry, 0x44aa88,  0);
+        makeInstance(geometry, 0x8844aa, -2);
+        makeInstance(geometry, 0xaa8844,  2);
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+        let renderRequested = false; // 定义此变量是解决 controls.update()时死循环问题，手动更改控制器会触发change， controls.update()也会触发change
+        function render() {
+            renderRequested = false;
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+            controls.update();
+            renderer.render(scene, camera);
+//            requestAnimationFrame(render); // 不再循环调用，因为这样会造成资源浪费
+        }
+        render(); // 这里只调用一次
+
+        function requestRenderIfNotRequested() {
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(render);
+            }
+        }
+
+        // 我们需要在OrbitControls改变摄像机设置的时候渲染场景. 幸好OrbitControls提供了一个change事件来监听变化
+        controls.addEventListener('change', requestRenderIfNotRequested);
+        // 我们同样需要捕捉到用户改变窗口大小的情况. 在之前连续渲染的时候这种情况是自动处理的, 但是现在是按需渲染, 我们需要在窗口改变的时候显式resize窗口大小
+        window.addEventListener('resize', requestRenderIfNotRequested);
+
+        // note: this is a workaround for an OrbitControls issue
+        // in an iframe. Will remove once the issue is fixed in
+        // three.js
+//        window.addEventListener('mousedown', (e) => {
+//            e.preventDefault();
+//            window.focus();
+//        });
+//        window.addEventListener('keydown', (e) => {
+//            e.preventDefault();
+//        });
+    }
+
+    main();
+
+
+
+
+</script>
+</body>
+</html>
