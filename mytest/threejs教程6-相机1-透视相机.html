@@ -250,7 +250,7 @@
             const height = Math.min(canvasRect.height, bottom - top);
 
             // 设置剪函数以仅渲染一部分场景
-            const positiveYUpBottom = canvasRect.height - bottom;
+            const positiveYUpBottom = canvasRect.height - bottom; // 注意，下面这个裁剪区域和视口大小是以左下角那个点坐标计算的
 
             // 这里其实计算的是渲染区域左上角坐标 和width height
             renderer.setScissor(left, positiveYUpBottom, width, height); // 将剪裁区域设为(x, y)到(x + width, y + height) Sets the scissor area from

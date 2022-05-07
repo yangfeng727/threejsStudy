@@ -1,0 +1,251 @@
+<!--
+参考：https://threejs.org/manual/#zh/multiple-scenes
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>多个画布, 多个场景</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        .wrap {
+            width: 200px;
+            height: 200px;
+            position: relative;
+            overflow: auto;
+        }
+
+        p {
+            font-size: 50px;
+        }
+
+        #c {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            display: block;
+            z-index: -1;
+        }
+        *[data-diagram] {
+            display: inline-block;
+            width: 5em;
+            height: 3em;
+        }
+        .left {
+            float: left;
+            margin-right: .25em;
+        }
+        .right {
+            float: right;
+            margin-left: .25em;
+        }
+        p {
+            margin: 1em auto;
+            max-width: 500px;
+            font-size: xx-large;
+        }
+
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<p>
+    <span data-diagram="box" class="left"></span>
+    I love boxes. Presents come in boxes.
+    When I find a new box I'm always excited to find out what's inside.
+</p>
+<p>
+    <span data-diagram="pyramid" class="right"></span>
+    When I was a kid I dreamed of going on an expedition inside a pyramid
+    and finding a undiscovered tomb full of mummies and treasure.
+</p>
+<!-- Remove this when import maps will be widely supported -->
+<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+    import {TrackballControls} from './jsm/controls/TrackballControls.js'; // TrackballControls 与 OrbitControls 相类似。然而，它不能恒定保持摄像机的up向量。 这意味着，如果摄像机绕过“北极”和“南极”，则不会翻转以保持“右侧朝上”。
+
+    /*
+     浏览器限制了WebGL上下文(WebGL contexts)的数量。
+     通常浏览器将其限制为 8 个，一旦超出这个数量，最先创建的WebGL上下文就会被自动弃用。
+
+     无法在不同的WebGL上下文中共享资源。
+     不同WebGL上下文无法共享任何资源，这就意味着，假设你想要在两个Canvas中各加载一个10Mb的模型，并且每个模型都20Mb的纹理，那么这个模型和纹理将分别被加载两次。因此，初始化、着色器编译等都将运行两次，随着Canvas数量的增减，情况会变得与来越糟糕。
+
+     解决办法:
+     解决办法就是用一张Canvas在整个背景中填充视口，并利用一些其他元素来代表每个“虚拟画布”(virtual canvas)，即只在一张Canvas中加载一个Renderer，并为每个virtual canvas创建一个场景(Scene)。这样我们只需要确保每个virtual canvas正确的位置，THREE.js就会将它们渲染在屏幕上相应的位置。
+
+     利用这个方法，由于我们只添加了一张Canvas，也就仅仅使用了一个WebGL contexts，因此不仅解决了资源共享问题，且不会引发WebGL上下文数量限制问题。
+     */
+
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas, alpha: true});
+
+        const sceneElements = [];
+        function addScene(elem, fn) {
+            sceneElements.push({elem, fn});
+        }
+
+        // 创建场景及其相机、光照
+        function makeScene(elem) {
+            const scene = new THREE.Scene();
+
+            const fov = 45;
+            const aspect = 2;  // the canvas default
+            const near = 0.1;
+            const far = 5;
+            const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+            camera.position.set(0, 1, 2);
+            camera.lookAt(0, 0, 0);
+            scene.add(camera);
+
+            // 给每个元素添加控制器
+            const controls = new TrackballControls(camera, elem);
+            controls.noZoom = true; // 是否禁用缩放
+            controls.noPan = true; // 是否禁用平移
+
+            // 添加helper
+            scene.add(new THREE.AxesHelper(250));
+
+            {
+                const color = 0xFFFFFF;
+                const intensity = 1;
+                const light = new THREE.DirectionalLight(color, intensity);
+                light.position.set(-1, 2, 4);
+                // scene.add(light);
+                camera.add(light); // 将光线添加到camera，意味着相机看到的始终有光照，可以理解为相机自带一个灯
+            }
+
+            return {scene, camera, controls};
+        }
+
+        // 场景配置 - 配置当前场景需要展示的物体、与渲染动画回调
+        const sceneInitFunctionsByName = {
+            'box': (elem) => {
+                const {scene, camera, controls} = makeScene(elem);
+                const geometry = new THREE.BoxGeometry(1, 1, 1);
+                const material = new THREE.MeshPhongMaterial({color: 'red'});
+                const mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+                return (time, rect) => {
+                    // 物体设置运动动画
+                    mesh.rotation.y = time * .1;
+                    // 更新相机
+                    camera.aspect = rect.width / rect.height;
+                    camera.updateProjectionMatrix();
+                    // 更新控制器
+                    controls.handleResize(); // 若应用程序窗口大小发生改变，则应当调用此函数。
+                    controls.update();
+                    renderer.render(scene, camera);
+                };
+            },
+            'pyramid': (elem) => {
+                const {scene, camera, controls} = makeScene(elem);
+                const radius = .8;
+                const widthSegments = 4;
+                const heightSegments = 2;
+                const geometry = new THREE.SphereGeometry(radius, widthSegments, heightSegments);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 'blue',
+                    flatShading: true,
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+                return (time, rect) => {
+                    mesh.rotation.y = time * .1;
+                    camera.aspect = rect.width / rect.height;
+                    camera.updateProjectionMatrix();
+                    controls.handleResize();
+                    controls.update();
+                    renderer.render(scene, camera);
+                };
+            },
+        };
+
+        document.querySelectorAll('[data-diagram]').forEach((elem) => {
+            const sceneName = elem.dataset.diagram; // 获取设置的属性值
+            const sceneInitFunction = sceneInitFunctionsByName[sceneName];
+            const sceneRenderFunction = sceneInitFunction(elem);
+            addScene(elem, sceneRenderFunction);
+        });
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        const clearColor = new THREE.Color('#000');
+        function render(time) {
+            time *= 0.001;
+
+            resizeRendererToDisplaySize(renderer);
+
+            renderer.setScissorTest(false);
+            renderer.setClearColor(clearColor, 0); // 设置颜色透明度
+            renderer.clear(true, true);
+            renderer.setScissorTest(true);
+
+            // 设置同步滚动 - 不设置若页面有滚动条，渲染的场景将不在指定盒子位置,注意：canvas 设置的absolute
+            const transform = `translateY(${window.scrollY}px)`;
+            renderer.domElement.style.transform = transform;
+
+            // 对于每个元素，它将检查该元素是否滚动到了可视区域并调用相应的场景初始化函数。
+            for (const {elem, fn} of sceneElements) {
+                // get the viewport relative position of this element
+                const rect = elem.getBoundingClientRect();
+                const {left, right, top, bottom, width, height} = rect;
+
+                const isOffscreen =
+                    bottom < 0 ||
+                    top > renderer.domElement.clientHeight ||
+                    right < 0 ||
+                    left > renderer.domElement.clientWidth;
+
+                if (!isOffscreen) {
+                    // 在canvas中裁剪一部分区域给场景
+                    // 设置要渲染的的裁剪区域和视图
+                    const positiveYUpBottom = renderer.domElement.clientHeight - bottom;
+                    renderer.setScissor(left, positiveYUpBottom, width, height);
+                    renderer.setViewport(left, positiveYUpBottom, width, height);
+
+                    // 需要渲染的裁剪区域分配好后，设置对应场景的camera aspect、当前场景的动画、并渲染场景
+                    fn(time, rect);
+                }
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+
+</script>
+</body>
+</html>
