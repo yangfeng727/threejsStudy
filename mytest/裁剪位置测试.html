@@ -1,0 +1,88 @@
+<html>
+
+<head>
+    <title>My first three.js app</title>
+    <style>
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+
+</head>
+
+<body>
+<canvas id="c"></canvas>
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+
+    // 场景、渲染器等初始化的操作
+    let scene = new THREE.Scene();
+    let camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 3, 3)
+    camera.lookAt(0, 0, 0);
+
+    let geometry = new THREE.BoxGeometry(1, 1, 1);
+    let material = new THREE.MeshBasicMaterial({
+        color: 'red'
+    });
+    let mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh)
+
+    // render
+    const canvas = document.querySelector('#c');
+    const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        canvas: canvas
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+//    let renderer = new THREE.WebGLRenderer();
+//    renderer.setSize(window.innerWidth, window.innerHeight);
+//    document.body.appendChild(renderer.domElement);
+
+    //开启WebGL剪裁测试功能，如果不开启，.setScissor方法设置的范围不起作用
+    renderer.setScissorTest(true)
+
+    // 添加 helper
+    const gridHelper = new THREE.GridHelper( 40, 40 );
+    scene.add( gridHelper );
+    scene.add(new THREE.AxesHelper(250));
+
+    // 渲染函数
+    function render(time) {
+        time *= 0.001;
+        // 距离画布左侧50，顶部100   渲染区域宽高度都是画布宽高的三分之一
+
+        // 注意：这里的位置是以左下角为原点??? 为毛别人都说这个y是相对于顶部的，一天到晚开黄腔
+        // renderer.setScissor本质上是对原生WebGL APIgl.scissor()的封装 glScissor窗口坐标是以左下角为(0, 0)，右上角为(width, height)的，这与Windows系统窗口有所不同。
+        renderer.setScissor(10, 50, window.innerWidth / 3, window.innerHeight / 3); // 设置裁剪区域
+        renderer.setViewport(10, 50, window.innerWidth / 3, window.innerHeight / 3) // 设置将视口大小 - 也就是将场景内容全部渲染到这个位置 - 影响场景中模型的平移缩放变换
+
+//        renderer.setClearColor(0xffffff, 1)
+        renderer.render(scene, camera);
+        mesh.rotation.y = time * .1;
+        requestAnimationFrame(render);
+    }
+    render();
+</script>
+</body>
+
+</html>
