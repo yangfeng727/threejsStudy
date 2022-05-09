@@ -230,19 +230,42 @@
                         ctx.canvas.height = height;
                     }
 
-                    renderer.setScissor(0, 0, width, height); // 其实就是左下角那个点，坐下角原点是(0,0)
-                    renderer.setViewport(0, 0, width, height);
+                    // 绘制方式一：主要是canvas绘制点不一样
+                    let fn1 = () => {
+                        renderer.setScissor(0, rendererCanvas.height - height, width, height); // 其实就是左下角那个点，坐下角原点是(0,0)
+                        renderer.setViewport(0, rendererCanvas.height - height, width, height);
 
-                    fn(time, rect);
+                        fn(time, rect);
 
 //                    console.log(rendererCanvas.height,  height)
-                    // 渲染该区域的场景并将结果复制到该区域的画布上。
-                    // copy the rendered scene to this element's canvas
-                    ctx.globalCompositeOperation = 'copy';
-                    ctx.drawImage( // 因为要绘制的场景盒子canvas是2d的因此，坐标原点在左上角
-                        rendererCanvas,
-                        0, rendererCanvas.height - height, width, height,  // src rect -- 因为这里rendererCanvas的高度可能大于场景height - 这里因为已经把rendererCanvas复制过来了，复制后的图片原点还是左上角，rendererCanvas.height - height后才是图形正确开始展示的y位置
-                        0, 0, width, height);                              // dst rect -- 左上角原点开始绘制
+                        // 渲染该区域的场景并将结果复制到该区域的画布上。
+                        // copy the rendered scene to this element's canvas
+                        ctx.globalCompositeOperation = 'copy';
+                        ctx.drawImage( // 因为要绘制的场景盒子canvas是2d的因此，坐标原点在左上角
+                            rendererCanvas,
+                            0, 0, width, height,  // src rect -- 因为这里rendererCanvas的高度可能大于场景height - 这里因为已经把rendererCanvas复制过来了，复制后的图片原点还是左上角，rendererCanvas.height - height后才是图形正确开始展示的y位置
+                            0, 0, width, height);                              // dst rect -- 左上角原点开始绘制
+                    }
+//                    fn1()
+
+                    // 绘制方式一：主要是canvas绘制点不一样 - 这里绘制的是renderer 类似于把scene绘制到右上角
+                    let fn2 = () => {
+                        renderer.setScissor(0, 0, width, height); // 其实就是左下角那个点，坐下角原点是(0,0)
+                        renderer.setViewport(0, 0, width, height);
+
+                        fn(time, rect);
+
+//                    console.log(rendererCanvas.height,  height)
+                        // 渲染该区域的场景并将结果复制到该区域的画布上。
+                        // copy the rendered scene to this element's canvas
+                        ctx.globalCompositeOperation = 'copy';
+                        ctx.drawImage( // 因为要绘制的场景盒子canvas是2d的因此，坐标原点在左上角
+                            rendererCanvas,
+                            0, rendererCanvas.height - height, width, height,  // src rect -- 因为这里rendererCanvas的高度可能大于场景height - 这里因为已经把rendererCanvas复制过来了，复制后的图片原点还是左上角，rendererCanvas.height - height后才是图形正确开始展示的y位置
+                            0, 0, width, height);                              // dst rect -- 左上角原点开始绘制
+                    }
+                    fn2()
+
                 }
             }
 
