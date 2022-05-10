@@ -1,0 +1,250 @@
+<!--
+参考：https://threejs.org/manual/zh/align-html-elements-to-3d.html
+有时你想在 3D 场景中显示一些文本，这有很多种选择，每一种都有各自的优缺点。
+【
+   注意：
+   3d canvas中的标准化设备坐标指的是[-1,1]之间的3d坐标系坐标（y轴向上，x轴向右）
+   而鼠标坐标或者css需要赋值的坐标，是（y轴向下，x轴向右的正常坐标，需要将标准坐标转过来）
+   注意转换y轴时，记得用 3dy = canvas.height-2dy
+】
+
+使用 3D 文本
+
+如果你看过 图元章节 你就会看到 TextGeometry 可以 生成3D文本，这可能对飞行类的Logo很有效，但对统计、信息、标记类不是很合适。
+
+使用带2D文本的纹理图
+
+这篇文章 使用Canvas作为纹理 提到Canvas可以作为物体的纹理绘制。你可以向Canvas中绘制文字并且 以Billboard的方式展示它。这种方法的优点是文本已被集成到3D场景中，像3D场景中的计算机终端，这可能是比较完美的。
+
+使用HTML元素并定位它们以匹配3D场景
+
+这种方法的好处是您可以使用所有的HTML能力。你的HTML中可以有多个元素，可以通过CSS设置样式，它也可以被用户选中因为它就是实际的文本内容。
+
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>对齐HTML元素和3D对象</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        #c {
+            width: 100%;  /* let our container decide our size */
+            height: 100%;
+            display: block;
+        }
+        #container {
+            position: relative;  /* makes this the origin of its children */
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #labels {
+            position: absolute;  /* let us position ourself inside the container */
+            left: 0;             /* make our position the top left of the container */
+            top: 0;
+            color: white;
+            z-index: 0;          /* 创建一个新的层叠上下文，这样子节点就不会和页面其他内容冲突 */
+        }
+        #labels>div {
+            white-space: nowrap;
+            position: absolute;  /* let us position them inside the container */
+            left: 0;             /* make their default position the top left of the container */
+            top: 0;
+            cursor: pointer;     /* change the cursor to a hand when over us */
+            font-size: large;
+            user-select: none;   /* don't let the text get selected */
+            text-shadow:         /* create a black outline */
+                    -1px -1px 0 #000,
+                    0   -1px 0 #000,
+                    1px -1px 0 #000,
+                    1px  0   0 #000,
+                    1px  1px 0 #000,
+                    0    1px 0 #000,
+                    -1px  1px 0 #000,
+                    -1px  0   0 #000;
+        }
+        #labels>div:hover {
+            color: red;
+        }
+
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<div id="container">
+    <canvas id="c"></canvas>
+    <div id="labels"></div>
+</div>
+<!-- Remove this when import maps will be widely supported -->
+<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+    import {TrackballControls} from './jsm/controls/TrackballControls.js'; // TrackballControls 与 OrbitControls 相类似。然而，它不能恒定保持摄像机的up向量。 这意味着，如果摄像机绕过“北极”和“南极”，则不会翻转以保持“右侧朝上”。
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 1.1;
+        const far = 50;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 7;
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.target.set(0, 0, 0);
+        controls.update();
+
+        const scene = new THREE.Scene();
+
+        // light
+        {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(-1, 2, 4);
+            scene.add(light);
+        }
+
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        const labelContainerElem = document.querySelector('#labels');
+
+        function makeInstance(geometry, color, x, name) {
+            const material = new THREE.MeshPhongMaterial({color});
+
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+
+            cube.position.x = x;
+
+            // 生成匹配的文本盒子
+            const elem = document.createElement('div');
+            elem.textContent = name;
+            labelContainerElem.appendChild(elem);
+
+            return {cube, elem};
+        }
+
+        const cubes = [
+            makeInstance(geometry, 0x44aa88,  0, 'Aqua Colored Box'),
+            makeInstance(geometry, 0x8844aa, -2, 'Purple Colored Box'),
+            makeInstance(geometry, 0xaa8844,  2, 'Gold Colored Box'),
+        ];
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        const tempV = new THREE.Vector3();
+        const raycaster = new THREE.Raycaster(); // 利用射线解决物体重叠，label标签重叠问题
+
+        function render(time) {
+            time *= 0.001;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            cubes.forEach((cubeInfo, ndx) => {
+                const {cube, elem} = cubeInfo;
+                const speed = 1 + ndx * .1;
+                const rot = time * speed;
+                cube.rotation.x = rot;
+                cube.rotation.y = rot;
+
+                // get the position of the center of the cube 获取立方体中心的位置
+                cube.updateWorldMatrix(true, false); // 更新当前对象的全局变换，两个参数,updateParents-递归更新祖先的全局转换。updateChildren-递归更新子体的全局转换。
+                cube.getWorldPosition(tempV); // 返回一个表示该物体在世界空间中位置的矢量，并将值复制到tempV
+
+//                console.log(JSON.parse(JSON.stringify(tempV)))
+                // 实现原理：
+                // 先更新变换（将物体信息更新），获取物体在世界空间的最新坐标，
+                // 然后将此向量(坐标)从世界空间投影到相机的标准化设备坐标
+                // 将标准屏幕坐标转化为CSS坐标
+                // 将元素移动到此位置
+
+                // get the normalized screen coordinate of that position
+                // x and y will be in the -1 to +1 range with x = -1 being
+                // on the left and y = -1 being on the bottom
+                // 获取标准化屏幕坐标，x和y都会在-1和1区间
+                // x = -1 表示在最左侧
+                // y = -1 表示在最底部
+                tempV.project(camera); // 将此向量(坐标)从世界空间投影到相机的标准化设备坐标 (NDC) 空间。
+//                console.log(tempV, 444)
+
+                // 调用Raycast获取所有相交的物体
+                // 以相机为起点，物体为终点，也就是相机往tempV这个点的方向发出一条射线
+                raycaster.setFromCamera(tempV, camera);
+                const intersectedObjects = raycaster.intersectObjects(scene.children); // 检查与射线相交的物体
+                // 如果第一个相交的是此物体，那么就是可见的
+                const show = intersectedObjects.length && cube === intersectedObjects[0].object;
+                /*
+                 解决：我们缩小了视野，物体移出了视锥体范围，Label还是在显示
+                 这 部分工作 有效是因为我们计算的标准化坐标包含一个z 值，它从-1开始，也就是相机视锥体的 near 值， +1结束，也就是相机视锥体的 far值。
+                */
+                if (!show || Math.abs(tempV.z) > 1) { // 为了处理超出视锥体不可见的问题，我们通过检查 tempV.z检查此对象的原点是否在截锥体之外。
+                    // 隐藏Label
+                    elem.style.display = 'none';
+                } else {
+                    // 显示Label
+                    elem.style.display = '';
+
+                    // convert the normalized position to CSS coordinates // 将标准屏幕坐标[-1,1]之间的坐标，转化为CSS坐标
+                    const x = (tempV.x *  .5 + .5) * canvas.width; // [-1,1] * 0.5 =>[-0.5,0.5] + 0.5 => [0,1]
+//                const y = (tempV.y * -.5 + .5) * canvas.height; // [-1,1] * -0.5 =>[0.5, -0.5] + 0.5 => [1,0]
+                    const y = canvas.height - ((tempV.y * .5 + .5) * canvas.height); // 还是这种好理解点，换算成2d canvas中的坐标
+
+                    // move the elem to that position // 将元素移动到此位置
+                    elem.style.transform = `translate(-50%, -50%) translate(${x}px,${y}px)`;
+
+                    // 设置排序用的zIndex
+                    elem.style.zIndex = (-tempV.z * .5 + .5) * 100000 | 0;
+                }
+
+            });
+
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+
+</script>
+</body>
+</html>

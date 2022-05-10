@@ -124,6 +124,7 @@ camera —— 射线所来源的摄像机。
                 transparent: true,
                 side: THREE.DoubleSide,
                 alphaTest: 0.5,
+//                opacity:0,
             });
 
             const cube = new THREE.Mesh(geometry, material);
@@ -211,7 +212,7 @@ camera —— 射线所来源的摄像机。
                 renderer.setRenderTarget(null);
                 // clear the view offset so rendering returns to normal
                 camera.clearViewOffset();
-                //read the pixel - 将当前渲染目标中的像素数据读取到传入的缓冲区中
+                //read the pixel - 将当前渲染目标中的像素数据读取到传入的缓冲区中 --- 主要是利用的此方法
                 renderer.readRenderTargetPixels(
                     pickingTexture,// 参数是WebGLRenderTarget类型
                     0,   // x
@@ -224,9 +225,9 @@ camera —— 射线所来源的摄像机。
                     (pixelBuffer[0] << 16) |
                     (pixelBuffer[1] <<  8) |
                     (pixelBuffer[2]      );
-//                console.log(pixelBuffer,id)
 
                 const intersectedObject = idToObject[id];
+//                console.log(intersectedObject,id)
                 if (intersectedObject) {
                     if(intersectedObject.type !== 'Mesh') return // 容错处理，这里只穿透物体
                     // pick the first object. It's the closest one
@@ -274,7 +275,7 @@ camera —— 射线所来源的摄像机。
             };
         }
 
-        // 由于我们是从像素点拾取，而不是射线追踪，只需将代码修改为使用像素拾取方式，获取拾取位置。
+        // 由于我们是从像素点拾取，而不是射线追踪，只需将代码修改为使用像素拾取方式，获取拾取位置。 - 该坐标是二维画布坐标，即y轴向下，x向右
         function setPickPosition(event) {
             const pos = getCanvasRelativePosition(event);
             pickPosition.x = pos.x;

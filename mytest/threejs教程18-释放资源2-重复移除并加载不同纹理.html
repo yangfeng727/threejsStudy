@@ -1,0 +1,274 @@
+<!--
+参考：https://threejs.org/manual/#zh/cleanup
+
+如果你想随时间的变动加载和改变资源怎么办呢
+不像大多数的JavaScript库，three.js不能自动的清除这些资源。 如果你切换页面，浏览器会清除这些资源，其它时候如何管理它们取决于你。这是WebGL设计的问题，three.js没有追索权只能将释放资源的责任托付给你。
+
+通过在纹理、 图元和 材质对象上调用dispose方法来释放资源
+
+你可以手动来处理
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>释放资源2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #root {
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<canvas id="c"></canvas>
+<!-- Remove this when import maps will be widely supported -->
+<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+//    import {TrackballControls} from './jsm/controls/TrackballControls.js'; // TrackballControls 与 OrbitControls 相类似。然而，它不能恒定保持摄像机的up向量。 这意味着，如果摄像机绕过“北极”和“南极”，则不会翻转以保持“右侧朝上”。
+    import {GLTFLoader} from './jsm/loaders/GLTFLoader.js';
+
+    // 创建一个类来跟踪这些资源。我们会请求这个类来帮我们做清除的工作。
+    class ResourceTracker {
+        constructor() {
+            this.resources = new Set();
+        }
+        track(resource) {
+            // 因为任意的resource.geometry、resource.material和resource.children有可能为null或undefined， 我们将在track的入口执行检查。
+            if (!resource) {
+                return resource;
+            }
+
+            // 因为resource.children是一个数组， 同时resource.material也可能是数组，让我们对数组做检测。
+            // handle children and when material is an array of materials or
+            // uniform is array of textures
+            if (Array.isArray(resource)) {
+                resource.forEach(resource => this.track(resource));
+                return resource;
+            }
+
+            if (resource.dispose || resource instanceof THREE.Object3D) {
+                this.resources.add(resource);
+            }
+            if (resource instanceof THREE.Object3D) { // 对于加载文件来说，还需要一点额外的工作。大多数的加载器仅仅返回一个Object3D 对象，作为它加载的层次对象的根节点，因此我们需要去发现所有的这些资源是哪些。
+                this.track(resource.geometry);
+                this.track(resource.material);
+                this.track(resource.children);
+            } else if (resource instanceof THREE.Material) { // 最后我们需要遍历这些材质的属性和uniforms来寻找纹理。
+                // We have to check if there are any textures on the material
+                for (const value of Object.values(resource)) {
+                    if (value instanceof THREE.Texture) {
+                        this.track(value);
+                    }
+                }
+                // We also have to check if any uniforms reference textures or arrays of textures
+                if (resource.uniforms) {
+                    for (const value of Object.values(resource.uniforms)) {
+                        if (value) {
+                            const uniformValue = value.value;
+                            if (uniformValue instanceof THREE.Texture ||
+                                Array.isArray(uniformValue)) {
+                                this.track(uniformValue);
+                            }
+                        }
+                    }
+                }
+            }
+            return resource;
+        }
+        untrack(resource) {
+            this.resources.delete(resource);
+        }
+        dispose() {
+            for (const resource of this.resources) {
+                if (resource instanceof THREE.Object3D) {
+                    if (resource.parent) {
+                        resource.parent.remove(resource);
+                    }
+                }
+                if (resource.dispose) {
+                    resource.dispose();
+                }
+            }
+            this.resources.clear();
+        }
+    }
+
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+        renderer.outputEncoding = THREE.sRGBEncoding;
+
+        // camera
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 5;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 2;
+
+        // scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('lightblue');
+
+        // light
+        function addLight(...pos) {
+            const color = 0xFFFFFF;
+            const intensity = 0.8;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(...pos);
+            scene.add(light);
+        }
+        addLight(-1, 2, 4);
+        addLight( 2, -2, 3);
+
+        /**
+         *  计算出距离distance【利用三角函数正切计算】。然后移动相机，离盒子中心distance远。然后把摄像机对准盒子中心。
+         *  因为不同模型的尺寸不一致，如果过大或者过小 可能看不到，因此这里设置个动态的方法 自动移动相机位置
+         */
+        function frameArea(sizeToFitOnScreen, boxSize, boxCenter, camera) {
+            const halfSizeToFitOnScreen = sizeToFitOnScreen * 0.5;
+            const halfFovY = THREE.MathUtils.degToRad(camera.fov * .5);
+            const distance = halfSizeToFitOnScreen / Math.tan(halfFovY);
+            // compute a unit vector that points in the direction the camera is now
+            // in the xz plane from the center of the box
+            const direction = (new THREE.Vector3())
+                .subVectors(camera.position, boxCenter)
+                .multiply(new THREE.Vector3(1, 0, 1))
+                .normalize();
+
+            // move the camera to a position distance units way from the center
+            // in whatever direction the camera was from the center already
+            camera.position.copy(direction.multiplyScalar(distance).add(boxCenter));
+
+            // pick some near and far values for the frustum that
+            // will contain the box.
+            camera.near = boxSize / 100;
+            camera.far = boxSize * 100;
+
+            camera.updateProjectionMatrix();
+
+            // point the camera to look at the center of the box
+            camera.lookAt(boxCenter.x, boxCenter.y, boxCenter.z);
+        }
+
+        // 封装GLTFLoader为promise
+        const gltfLoader = new GLTFLoader();
+        function loadGLTF(url) {
+            return new Promise((resolve, reject) => {
+                gltfLoader.load(url, resolve, undefined, reject);
+            });
+        }
+
+        function waitSeconds(seconds = 0) {
+            return new Promise(resolve => setTimeout(resolve, seconds * 1000));
+        }
+
+        const fileURLs = [
+            './resources/models/cartoon_lowpoly_small_city_free_pack/scene.gltf',
+            './resources/models/3dbustchallange_submission/scene.gltf',
+            './resources/models/mountain_landscape/scene.gltf',
+            './resources/models/simple_house_scene/scene.gltf',
+        ];
+
+        async function loadFiles() {
+            for (;;) {
+                for (const url of fileURLs) {
+                    const resMgr = new ResourceTracker();
+                    const track = resMgr.track.bind(resMgr); // 定义一个方法变量，简化resMgr.track 为track
+                    const gltf = await loadGLTF(url);
+//                    console.log(gltf, 66)
+//                    const root = resMgr.track(gltf.scene);
+                    const root = track(gltf.scene);// 同上写法
+                    scene.add(root); // 将引入的模型场景加入当前场景
+
+                    // 这部分实现 计算一个包含我们刚刚加载的场景的盒子，并计算出它的大小和中心。然后把摄像机对准盒子中心。控制器也同步更新------- start
+                    // compute the box that contains all the stuff
+                    // from root and below
+                    const box = new THREE.Box3().setFromObject(root);
+
+                    const boxSize = box.getSize(new THREE.Vector3()).length();
+                    const boxCenter = box.getCenter(new THREE.Vector3());
+
+                    // set the camera to frame the box
+                    frameArea(boxSize * 1.1, boxSize, boxCenter, camera);
+                    // update the Trackball controls to handle the new size
+//                    controls.maxDistance = boxSize * 10;
+//                    controls.target.copy(boxCenter);
+//                    controls.update();
+                    // 这部分实现 计算一个包含我们刚刚加载的场景的盒子，并计算出它的大小和中心。然后把摄像机对准盒子中心。控制器也同步更新------- end
+
+                    renderer.render(scene, camera);
+                    await waitSeconds(2);
+
+                    resMgr.dispose();
+
+                    await waitSeconds(1);
+
+                }
+            }
+        }
+        loadFiles()
+
+        // 解决页面resize问题
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        function render() {
+            // 解决拉伸问题
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+
+
+</script>
+</body>
+</html>
