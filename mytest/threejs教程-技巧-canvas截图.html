@@ -5,7 +5,9 @@
 
 直接使用canvas截图将不会成功截取threejs绘制的图片，这个问题的出现是因为基于性能和兼容性的考量，默认情况下浏览器会在绘制完成后清除WebGL canvas的缓存。
 
-解决方案是在你捕获截图前调用一次渲染代码。
+解决方案：
+方式一：是在你捕获截图前调用一次渲染代码。
+方式二：创建 WebGLRenderer的时候传入 preserveDrawingBuffer: true
 -->
 <!DOCTYPE html>
 <html>

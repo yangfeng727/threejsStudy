@@ -1,0 +1,88 @@
+<!--
+参考：https://threejs.org/manual/#zh/tips#screenshot
+
+在这些教程中，我们通常会将事件监听器绑定到canvas上 canvas。 虽然许多事件都能生效，但是默认情况下键盘事件不会正常响应。
+
+为了获取键盘事件，我们将canvas的 tabindex 属性设置为0或更高。如下。
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>获取键盘输入</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        h1{
+            font-size: 20px;
+        }
+        .spread {
+            display: flex;
+            font-size: x-small;
+            text-align: center;
+        }
+        canvas {
+            margin: 5px;
+            background: pink;
+        }
+        #c3:focus {
+            outline: none;
+        }
+
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<h1>在这些教程中，我们通常会将事件监听器绑定到canvas上 canvas。 虽然许多事件都能生效，但是默认情况下键盘事件不会正常响应。
+
+    为了获取键盘事件，我们将canvas的 tabindex 属性设置为0或更高。如下。</h1>
+<h1>这将导致一个新的问题，任何设置了 tabindex 的元素会在聚焦的时候突出显示。为了解决这个问题，我们在CSS中将它focus状态下的outline属性设置为none，如c3</h1>
+<p>你无法让第一个canvas接收到键盘输入。第二个canvas虽然能接收到输入但是被突出显示了。第三个canvas同时解决了这这两个问题。</p>
+<div class="spread">
+    <div>
+        <canvas width="100" height="100" id="c1"></canvas>
+        <div>tabindex not set</div>
+    </div>
+    <div>
+        <canvas width="100" height="100" id="c2" tabindex="0"></canvas>
+        <div>focus style not set</div>
+    </div>
+    <div>
+        <canvas width="100" height="100" id="c3" tabindex="1"></canvas>
+        <div>tabindex and<br/>focus style set</div>
+    </div>
+</div>
+
+
+<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+<script>
+    document.querySelectorAll('canvas').forEach((canvas) => {
+        const ctx = canvas.getContext('2d');
+
+        function draw(str) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(str, canvas.width / 2, canvas.height / 2);
+        }
+        draw(canvas.id);
+
+        canvas.addEventListener('focus', () => {
+            draw('has focus press a key');
+        });
+
+        canvas.addEventListener('blur', () => {
+            draw('lost focus');
+        });
+
+        canvas.addEventListener('keydown', (e) => {
+            draw(`keyCode: ${e.keyCode}`);
+        });
+    });
+
+</script>
+</body>
+</html>
