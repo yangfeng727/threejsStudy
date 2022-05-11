@@ -1,0 +1,529 @@
+<!--
+参考：https://threejs.org/manual/#zh/tips#screenshot
+
+可参考博客：https://www.jianshu.com/p/30f11ba31bda
+
+直接使用canvas截图将不会成功截取threejs绘制的图片，这个问题的出现是因为基于性能和兼容性的考量，默认情况下浏览器会在绘制完成后清除WebGL canvas的缓存。
+
+解决方案是在你捕获截图前调用一次渲染代码。
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>canvas截图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        #save {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            padding: 10px;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            border: 1px solid gray;
+            cursor: pointer;
+        }
+        #save:hover {
+            background: #444;
+        }
+        #save:focus {
+            outline: none;
+        }
+
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="save" type="button">Save...</button>
+
+<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+
+    // 方式一：捕获截图前调用一次渲染代码render函數 ,也就是保存是 调用 render(renderTime) // 捕获截图前调用一次渲染代码
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 50;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+//        camera.position.z = 20;
+        camera.position.set(10,4,20);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#DEFEFF');
+
+        const geometry = new THREE.SphereGeometry(2, 30, 50);
+        const material = new THREE.MeshPhongMaterial({ color: 0x44aa88, wireframe:true});
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // light
+        const directionalLight = new THREE.DirectionalLight( 0xffffff, 0.5 );
+        directionalLight.position.set(0, 2, 1000);
+        scene.add( directionalLight );
+
+        // helper
+        const gridHelper = new THREE.GridHelper( 40, 40 );
+        scene.add( gridHelper );
+        scene.add(new THREE.AxesHelper(250))
+
+        // controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.update()
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        let renderTime = null // 记录当前帧时间，截图时调用render
+        function render(time) {
+            time *= 0.001;  // convert to seconds
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            // 这里生成运动曲线
+            mesh.position.set(
+                Math.sin(time * 1.2) * 5,
+                Math.sin(time * 1.1) * 5,
+                Math.sin(time * 1.3) * 10,
+            );
+
+            renderer.render(scene, camera);
+        }
+        function animate(time) {
+            renderTime = time
+            render(renderTime)
+            requestAnimationFrame(animate);
+        }
+        animate()
+
+        // 保存
+        const elem = document.querySelector('#save');
+        elem.addEventListener('click', () => {
+            render(renderTime) // 捕获截图前调用一次渲染代码
+
+            // canvas2Img(canvas) // 导出方式一
+            canvas.toBlob((blob) => {
+                saveBlob(blob, `screencapture-${canvas.width}x${canvas.height}.png`);
+            });
+
+            // canvas2Img(canvas, `screencapture-${canvas.width}x${canvas.height}.png`) // 导出方式二
+        });
+
+        const saveBlob = (function() {
+            const a = document.createElement('a');
+            document.body.appendChild(a);
+            a.style.display = 'none';
+            return function saveData(blob, fileName) {
+                const url = window.URL.createObjectURL(blob);
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                if (url) window.URL.revokeObjectURL(url);
+            };
+        }());
+
+
+        function canvas2Img(canvas, name) {
+            var base64Url = canvas.toDataURL("image/png") // 因为canvas.toDataURL()兼容ie 9+，canvas.toBlob()只兼容ie10+【其中ie还需要加前缀ms,即使用canvas.msToBlob()】  因此这里选选择canvas.toDataURL()这个方法
+            if (window.navigator.msSaveOrOpenBlob) {//ie浏览器
+                var imgData = canvas.msToBlob();
+                var blobObj = new Blob([imgData]);
+                window.navigator.msSaveOrOpenBlob(blobObj, name + '.png');
+            } else { //谷歌火狐浏览器
+                downLoad(base64Url, name);
+            }
+        }
+
+        // 下载图片
+        function downLoad(url, name) {
+            var a = document.createElement('a')
+            a.href = url
+            a.setAttribute('download', name)
+            // a.setAttribute('target', '_blank')
+            // a.click() // 在safari下不行。safari下的A标签默认是没有绑定事件的 Safari不支持非button元素的click事件
+            document.body.appendChild(a); // 火狐浏览器必须追加到body里面
+            var e = document.createEvent('MouseEvent');
+            e.initEvent('click', false, false);
+            a.dispatchEvent(e);
+            a && document.body.removeChild(a)
+        }
+    }
+
+    // 方式二：创建 WebGLRenderer的时候传入 preserveDrawingBuffer: true
+    function main2() {
+        const canvas = document.querySelector('#c');
+//        const renderer = new THREE.WebGLRenderer({canvas});
+        const renderer = new THREE.WebGLRenderer({
+            canvas,
+            preserveDrawingBuffer: true, // 保留图形缓冲区
+//            alpha: true,
+        });
+//        renderer.autoClearColor = false;
+//        renderer.autoClear = false;
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 50;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+//        camera.position.z = 20;
+        camera.position.set(10,4,20);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#DEFEFF');
+
+        const geometry = new THREE.SphereGeometry(2, 30, 50);
+        const material = new THREE.MeshPhongMaterial({ color: 0x44aa88, wireframe:true});
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // light
+        const directionalLight = new THREE.DirectionalLight( 0xffffff, 0.5 );
+        directionalLight.position.set(0, 2, 1000);
+        scene.add( directionalLight );
+
+        // helper
+        const gridHelper = new THREE.GridHelper( 40, 40 );
+        scene.add( gridHelper );
+        scene.add(new THREE.AxesHelper(250))
+
+        // controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.update()
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        let renderTime = null // 记录当前帧时间，截图时调用render
+        function render(time) {
+            time *= 0.001;  // convert to seconds
+
+//            renderer.clear(true,true,true)
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            // 这里生成运动曲线
+            mesh.position.set(
+                Math.sin(time * 1.2) * 5,
+                Math.sin(time * 1.1) * 5,
+                Math.sin(time * 1.3) * 10,
+            );
+
+            renderer.render(scene, camera);
+        }
+        function animate(time) {
+            renderTime = time
+            render(renderTime)
+            requestAnimationFrame(animate);
+        }
+        animate()
+
+        // 保存
+        const elem = document.querySelector('#save');
+        elem.addEventListener('click', () => {
+//            render(renderTime) // 捕获截图前调用一次渲染代码
+
+            // canvas2Img(canvas) // 导出方式一
+            canvas.toBlob((blob) => {
+                saveBlob(blob, `screencapture-${canvas.width}x${canvas.height}.png`);
+            });
+
+            // canvas2Img(canvas, `screencapture-${canvas.width}x${canvas.height}.png`) // 导出方式二
+        });
+
+        const saveBlob = (function() {
+            const a = document.createElement('a');
+            document.body.appendChild(a);
+            a.style.display = 'none';
+            return function saveData(blob, fileName) {
+                const url = window.URL.createObjectURL(blob);
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                if (url) window.URL.revokeObjectURL(url);
+            };
+        }());
+
+
+        function canvas2Img(canvas, name) {
+            var base64Url = canvas.toDataURL("image/png") // 因为canvas.toDataURL()兼容ie 9+，canvas.toBlob()只兼容ie10+【其中ie还需要加前缀ms,即使用canvas.msToBlob()】  因此这里选选择canvas.toDataURL()这个方法
+            if (window.navigator.msSaveOrOpenBlob) {//ie浏览器
+                var imgData = canvas.msToBlob();
+                var blobObj = new Blob([imgData]);
+                window.navigator.msSaveOrOpenBlob(blobObj, name + '.png');
+            } else { //谷歌火狐浏览器
+                downLoad(base64Url, name);
+            }
+        }
+
+        // 下载图片
+        function downLoad(url, name) {
+            var a = document.createElement('a')
+            a.href = url
+            a.setAttribute('download', name)
+            // a.setAttribute('target', '_blank')
+            // a.click() // 在safari下不行。safari下的A标签默认是没有绑定事件的 Safari不支持非button元素的click事件
+            document.body.appendChild(a); // 火狐浏览器必须追加到body里面
+            var e = document.createEvent('MouseEvent');
+            e.initEvent('click', false, false);
+            a.dispatchEvent(e);
+            a && document.body.removeChild(a)
+        }
+    }
+
+    /*
+     绘图案例
+     如果你想要让用户使用动画对象进行绘图。你需要在创建 WebGLRenderer 的时候传入 preserveDrawingBuffer: true。
+     这将阻止浏览器清理canvas。类似的，你也需要告诉three.js不要自动清理canvas。
+
+     注意当前这个画图程序还有bug，因为浏览器仍然会改变分辨率的时候随时有可能清空canvas。也就是窗口大小改变，canvas会清空
+     可使用 “使用渲染目标的方式渲染到纹理上”解决
+    */
+    function main3() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({
+            canvas,
+            preserveDrawingBuffer: true, // 保留图形缓冲区
+            alpha: true,
+        });
+        renderer.autoClearColor = false; // 同时设置renderer是否清除颜色缓存 为false 这样才能在移动的时候有尾部轨迹
+
+        const camera = new THREE.OrthographicCamera(-2, 2, 1, -1, -1, 1);
+
+        const scene = new THREE.Scene();
+
+        {
+            const color = 0xFFFFFF;
+            const intensity = 1;
+            const light = new THREE.DirectionalLight(color, intensity);
+            light.position.set(-1, 2, 4);
+            scene.add(light);
+        }
+
+        const boxWidth = 1;
+        const boxHeight = 1;
+        const boxDepth = 1;
+        const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+        const base = new THREE.Object3D();
+        scene.add(base);
+        base.scale.set(0.1, 0.1, 0.1);
+
+        function makeInstance(geometry, color, x, y, z) {
+            const material = new THREE.MeshPhongMaterial({color});
+
+            const cube = new THREE.Mesh(geometry, material);
+            base.add(cube);
+
+            cube.position.set(x, y, z);
+
+            return cube;
+        }
+
+        // 生成6个正方体
+        makeInstance(geometry, '#F00', -2,  0,  0);
+        makeInstance(geometry, '#FF0',  2,  0,  0);
+        makeInstance(geometry, '#0F0',  0, -2,  0);
+        makeInstance(geometry, '#0FF',  0,  2,  0);
+        makeInstance(geometry, '#00F',  0,  0, -2);
+        makeInstance(geometry, '#F0F',  0,  0,  2);
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        const state = { x: 0, y: 0 };// 鼠标移动时会动态赋值给此变量，在render中赋值给物体
+
+        function render(time) {
+            time *= 0.001;  // convert to seconds
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                // 因为是正交投影相机，这里的代码不同
+                const canvas = renderer.domElement;
+//                console.log(canvas.clientWidth,canvas.clientHeight, canvas.clientWidth / canvas.clientHeight)
+                camera.right = canvas.clientWidth / canvas.clientHeight;
+                camera.left = -camera.right;
+                camera.updateProjectionMatrix();
+            }
+
+            // 设置移动位置与旋转动画 - 物体都在base里，只需改变base即可
+            base.position.set(state.x, state.y, 0);
+            base.rotation.x = time;
+            base.rotation.y = time * 1.11;
+
+            renderer.render(scene, camera);
+
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+
+        // 计算当前鼠标位置在 canvas内容缓冲区中的坐标
+        function getCanvasRelativePosition(event) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (event.clientX - rect.left) * canvas.width  / rect.width,
+                y: canvas.height - (event.clientY - rect.top ) * canvas.height / rect.height, // 这里y的坐标还是换算成3d坐标
+            };
+        }
+
+        const temp = new THREE.Vector3();
+        function setPosition(e) {
+            const pos = getCanvasRelativePosition(e);
+            const x = pos.x / canvas.width * 2 - 1; // 同样转为3d坐标系中的单位长度 [-1,1],转标准化设备坐标
+            const y = pos.y / canvas.height * 2 - 1;
+            temp.set(x, y, 0).unproject(camera); // 将此向量(坐标)从相机的标准化设备坐标 (NDC) 空间投影到世界空间。
+            state.x = temp.x; // 获取在世界空间中的x、y
+            state.y = temp.y;
+        }
+
+        // 添加事件监听，监听鼠标位置并赋值给state变量，在render时移动物体位置
+        canvas.addEventListener('mousemove', setPosition);
+        // 移动端
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            setPosition(e.touches[0]);
+        }, {passive: false});
+
+
+        // 下面是保存代码
+        const elem = document.querySelector('#save');
+        elem.addEventListener('click', () => {
+            // canvas2Img(canvas) // 导出方式一
+            canvas.toBlob((blob) => {
+                saveBlob(blob, `screencapture-${canvas.width}x${canvas.height}.png`);
+            });
+        });
+
+        const saveBlob = (function() {
+            const a = document.createElement('a');
+            document.body.appendChild(a);
+            a.style.display = 'none';
+            return function saveData(blob, fileName) {
+                const url = window.URL.createObjectURL(blob);
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                if (url) window.URL.revokeObjectURL(url);
+            };
+        }());
+    }
+
+    // gui 切换- 这里使用最简单的刷新页面
+    const gui = new GUI();
+    {
+        // 切换下拉
+        /**
+         * @title: 当前下拉作为独立panel的名称
+         * @arr：下拉显示项 eg:[xxx,xxxxx]
+         * @arrFn: 对应arr 触发选中当前项后的方法，arr.length === arrFn.length
+         * @addFolder: 是否新建一个父节点
+         * */
+        function addChangeTab(title,arr,arrFn, addFolder = true) {
+            let parent = addFolder?gui.addFolder(title):gui;
+//                const folder = gui.addFolder(title); // 单独来个panel
+            let useTab = sessionStorage.getItem('TABKEY');
+            let index = arr.findIndex(item=>item === useTab) // 用于初次执行对应方法
+            if(!useTab) { // 初次进来没有值，赋值第一个
+                sessionStorage.setItem('TABKEY', arr[0]);
+                useTab = arr[0]
+            }
+            if(index <0){ // 兼容 TABKEY 在多个页面使用的情况，这种情况说明，当前TABKEY 是其他页面赋值的值，当前页面没有，因此需要重写赋值
+                index = 0
+                sessionStorage.setItem('TABKEY', arr[0]);
+                useTab = arr[0]
+            }
+
+            let obj = {
+                changeTab: useTab // 下拉默认选中项
+            }
+            // 给obj对象开启gui控制，当changeTab属性发生变化，设置对应的值到sessionStorage，页面刷新则初始执行对应方法，达到切换目的
+            parent.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
+                sessionStorage.setItem('TABKEY', val);
+                window.location.reload() // 水平不够，暂未想到只更新部分内容的方法，来个最简单的直接刷新页面
+//               switch (val){
+//                   case arr[0]:
+//                       arrFn[0]()
+//                       break
+//                   case arr[1]:
+//                       arrFn[1]()
+//                       break
+//                   case arr[2]:
+//                       arrFn[2]()
+//                       break
+//               }
+            });
+
+            arrFn[index]() // 默认执行
+        }
+
+        addChangeTab(
+            'demo切换',
+            ['捕获截图前调用一次渲染代码render函數','创建 WebGLRenderer的时候传入 preserveDrawingBuffer: true','绘图案例-注意当前鼠标坐标与世界空间坐标的转换、而且尾部轨迹需要同时设置preserveDrawingBuffer和renderer.autoClearColor = false'],
+            [ // 上面tab对应的方法
+                main,
+                main2,
+                main3
+            ],false)
+    }
+</script>
+</body>
+</html>

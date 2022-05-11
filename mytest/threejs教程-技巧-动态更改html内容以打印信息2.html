@@ -1,0 +1,214 @@
+<!--
+参考：https://threejs.org/manual/#zh/debugging-javascript
+
+我们做一个简单的例子：每次我们点击鼠标后，就会产生一个出现2秒钟的物体，并朝着一个随机的方向移动。
+当前例子需要参数?debug=true才显示调试信息
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>打印信息</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #debug {
+            position: absolute;
+            left: 1em;
+            top: 1em;
+            padding: 1em;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            font-family: monospace;
+            pointer-events: none;
+        }
+
+    </style>
+    <!-- <script type="text/javascript" src="js/three.min.js"></script> -->
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="debug" style="display: none;">
+    <pre></pre>
+</div>
+
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
+<script type="importmap">
+			{
+				"imports": {
+					"three": "./build/three.module.js"
+				}
+			}
+
+</script>
+<script type="module">
+    import * as THREE from 'three';
+    import {GUI} from './js/lil-gui.module.min.js';
+    import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
+
+    /**
+     * 不支持ie
+     Returns the query parameters as a key/value object.
+     Example: If the query parameters are
+
+     abc=123&def=456&name=gman
+
+     Then `getQuery()` will return an object like
+
+     {
+       abc: '123',
+       def: '456',
+       name: 'gman',
+     }
+     **/
+    function getQuery() {
+        return Object.fromEntries(new URLSearchParams(window.location.search).entries());
+    }
+
+    /*
+     制作一个”清除记录器“。这是我编的一个术语，我参与的很多游戏中都使用了这个方法。
+     其思想是您有一个只显示一帧消息的缓冲区，有显示数据需求的时候，就会调用一些函数向该缓冲区添加每一帧的数据。直到当前帧渲染完成再清空所有信息，然后循环此操作
+     相对于上一种方法为每个数据都添加一个html元素，这种方法会减少跟多工作量。
+     */
+    class ClearingLogger {
+        constructor(elem) {
+            this.elem = elem;
+            this.lines = [];
+        }
+
+        log(...args) {
+            this.lines.push([...args].join(' '));
+        }
+
+        render() {
+            this.elem.textContent = this.lines.join('\n');
+            this.lines = [];// 因为是在render中渲染的，因此每次渲染后清空信息
+        }
+    }
+    class DummyLogger {
+        log() {}
+        render() {}
+    }
+
+    function main() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 75;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 50;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 20;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#DEFEFF');
+
+        const geometry = new THREE.SphereGeometry();
+        const material = new THREE.MeshBasicMaterial({color: 'red'});
+
+        const things = []; // 存放物体
+
+        function rand(min, max) {
+            if (max === undefined) {
+                max = min;
+                min = 0;
+            }
+            return Math.random() * (max - min) + min;
+        }
+
+        function createThing() {
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+            things.push({
+                mesh,
+                timer: 2, // 当前物体最大存在时间
+                velocity: new THREE.Vector3(rand(-5, 5), rand(-5, 5), rand(-5, 5)), // 先生成随机位置信息 作为基数，后面调用addScaledVector与时间相乘，
+            });
+        }
+
+        canvas.addEventListener('click', createThing);
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        // 添加调试参数，只有当页面有debug参数时才显示调试信息
+        const query = getQuery();
+        const debug = query.debug === 'true';
+        const logger = debug
+            ? new ClearingLogger(document.querySelector('#debug pre'))
+            : new DummyLogger();
+        if (debug) {
+            document.querySelector('#debug').style.display = '';
+        }
+
+        let then = 0;
+
+        function render(now) {
+            now *= 0.001;  // convert to seconds
+            const deltaTime = now - then; // 时间间隔
+            then = now;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            logger.log('fps:', (1 / deltaTime).toFixed(1)); // 每秒传输帧数 fps = 1秒/每帧间隔（秒）
+            logger.log('num things:', things.length);
+            for (let i = 0; i < things.length;) {
+                const thing = things[i];
+                const mesh = thing.mesh;
+                const pos = mesh.position;
+                logger.log(
+                    'timer:', thing.timer.toFixed(3),
+                    'pos:', pos.x.toFixed(3), pos.y.toFixed(3), pos.z.toFixed(3));
+                thing.timer -= deltaTime;
+                if (thing.timer <= 0) {
+                    // remove this thing. Note we don't advance `i`
+                    things.splice(i, 1); // 删除当前元素
+                    scene.remove(mesh); // 场景中移除当前物体
+                } else {
+                    mesh.position.addScaledVector(thing.velocity, deltaTime); // 将所传入的v与s相乘所得的乘积和这个向量相加，生成物体位置
+                    ++i;
+                }
+            }
+
+            renderer.render(scene, camera);
+            logger.render(); // 生成信息
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    main();
+
+
+</script>
+</body>
+</html>
