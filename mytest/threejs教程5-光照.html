@@ -351,9 +351,11 @@
              * @title: 当前下拉作为独立panel的名称
              * @arr：下拉显示项 eg:[xxx,xxxxx]
              * @arrFn: 对应arr 触发选中当前项后的方法，arr.length === arrFn.length
+             * @addFolder: 是否新建一个父节点
              * */
-            function addChangeTab(title,arr,arrFn) {
-                const folder = gui.addFolder(title); // 单独来个panel
+            function addChangeTab(title,arr,arrFn, addFolder = true) {
+                let parent = addFolder?gui.addFolder(title):gui;
+//                const folder = gui.addFolder(title); // 单独来个panel
                 let useTab = sessionStorage.getItem('TABKEY');
                 let index = arr.findIndex(item=>item === useTab) // 用于初次执行对应方法
                 if(!useTab) { // 初次进来没有值，赋值第一个
@@ -365,13 +367,12 @@
                     sessionStorage.setItem('TABKEY', arr[0]);
                     useTab = arr[0]
                 }
-                arrFn[index]() // 默认执行
 
                 let obj = {
                     changeTab: useTab // 下拉默认选中项
                 }
                 // 给obj对象开启gui控制，当changeTab属性发生变化，设置对应的值到sessionStorage，页面刷新则初始执行对应方法，达到切换目的
-                folder.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
+                parent.add( obj, 'changeTab', arr).name('切换').onChange(function (val) {
                     sessionStorage.setItem('TABKEY', val);
                     window.location.reload() // 水平不够，暂未想到只更新部分内容的方法，来个最简单的直接刷新页面
 //               switch (val){
@@ -386,6 +387,8 @@
 //                       break
 //               }
                 });
+
+                arrFn[index]() // 默认执行
             }
 
             addChangeTab(
@@ -399,7 +402,7 @@
                     useSpotLight, // 聚光灯 SpotLight
                     useRectAreaLight, // 矩形区域光 RectAreaLight - 这个helper使用方式有区别，还需引入额外包
                     openPhysicallyCorrectLights // 特别的：physicallyCorrectLights 模式 renderer.physicallyCorrectLights = true时使用,需要更改顶部代码才行
-                ])
+                ],false)
 
         }
 

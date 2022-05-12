@@ -16,6 +16,7 @@
             height: 100%;
             margin: 0;
         }
+
         #c {
             width: 100%;
             height: 100%;
@@ -29,7 +30,7 @@
     <canvas id="c"></canvas>
 </div>
 
-<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+<!--<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>-->
 <script type="importmap">
 			{
 				"imports": {
@@ -40,9 +41,112 @@
 <script type="module">
     import * as THREE from 'three';
     import {GUI} from './js/lil-gui.module.min.js';
+    import * as BufferGeometryUtils from './jsm/utils/BufferGeometryUtils.js';
     import {OrbitControls} from './jsm/controls/OrbitControls.js'; // 允许相机环绕目标的控制器
 
-    function main() {
+    // 公共方法 start ------
+
+    async function loadFile(url) {
+        const req = await fetch(url);
+        return req.text();
+    }
+
+    // 写几行数据来解析文件内容
+    // 上面的代码返回了一个有着全部键值对的对象, 然后data属性是网格化的数据. min 和 max 中是 data 中的极值
+    function parseData(text) {
+        const data = [];
+        const settings = {data};
+        let max;
+        let min;
+        // split into lines
+        text.split('\n').forEach((line) => {
+            // split the line by whitespace
+            const parts = line.trim().split(/\s+/);
+            if (parts.length === 2) {
+                // only 2 parts, must be a key/value pair
+                settings[parts[0]] = parseFloat(parts[1]);
+            } else if (parts.length > 2) {
+                // more than 2 parts, must be data
+                const values = parts.map((v) => {
+                    const value = parseFloat(v);
+                    if (value === settings.NODATA_value) { // 将数据中的NODATA_value值替换为undefined，便于后面区分
+                        return undefined;
+                    }
+                    max = Math.max(max === undefined ? value : max, value);
+                    min = Math.min(min === undefined ? value : min, value);
+                    return value;
+                });
+                data.push(values);
+            }
+        });
+        return Object.assign(settings, {min, max});
+    }
+
+    // 公共方法 end ------
+
+    /*
+     思路：基于数据绘制图形，因为数据行列显示的就是地图，为空的代表海洋，有值的代表陆地【值大小代表密度不同，可用于高亮不同地区颜色】
+     这样绘制一个相同大小的矩形区域，有值的绘制1*1像素矩形填充，这样地图就出来了
+     */
+    function draw2DCanvas() {
+
+        function drawData(file) {
+            console.log('处理后的地图数据，这里的数据代表图上一个点，有点的地方是大陆，数据是undefined的是海洋', file)
+            const {min, max, ncols, nrows, data} = file;
+            const range = max - min;
+
+            const ctx = document.querySelector('canvas').getContext('2d');
+            // make the canvas the same size as the data 使画布与数据大小相同
+            ctx.canvas.width = ncols;
+            ctx.canvas.height = nrows;
+
+            // 本来应该是这样但是太小了
+//            ctx.canvas.style.width = px(ncols);
+//            ctx.canvas.style.height = px(nrows);
+
+            // 放大点 - 注意设置style的时候要带上单位px - 放大内容，设置style的宽高是canvas绘图区域宽高的一倍
+            // 若我想要放大的同时保证清晰度怎么办？绘制ctx.fillRect时的像素用2*2 或者 4*4 ，类似于设备像素比的计算
+            ctx.canvas.style.width = px(ncols * 2); // 但是把它放大一倍，这样就不会太小了
+            ctx.canvas.style.height = px(nrows * 2);
+
+            // 绘制背景
+            ctx.fillStyle = '#444';
+            ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+            // draw each data point
+            data.forEach((row, latNdx) => { // 横向纬度线数据
+                row.forEach((value, lonNdx) => { // 纵向经度线数据
+                    if (value === undefined) {
+                        return;
+                    }
+                    const amount = (value - min) / range; // 因为亮度是0-100之间的值
+                    const hue = 1;
+                    const saturation = 1;
+                    const lightness = amount;
+
+                    // 绘制地图，其中根据数据的占比不同显示不同亮度
+                    // ctx.fillStyle = '#FF0000';
+                    ctx.fillStyle = hsl(hue, saturation, lightness);
+                    ctx.fillRect(lonNdx, latNdx, 1, 1); // 在当前数据（lonNdx,latNdx）出绘制1*1px大小的矩形，也就是在当前位置绘制一个像素点
+                });
+            });
+        }
+
+        function px(v) {
+            return `${v | 0}px`;
+        }
+
+        function hsl(h, s, l) {
+            // hsl 方式 针对色相 是在0-360之间取值，因为是圆柱形取值，圆代表色相
+            return `hsl(${h * 360 | 0},${s * 100 | 0}%,${l * 100 | 0}%)`;
+        }
+
+        loadFile('https://threejs.org/manual/examples/resources/data/gpw/gpw_v4_basic_demographic_characteristics_rev10_a000_014mt_2010_cntm_1_deg.asc')
+            .then(parseData)
+            .then(drawData);
+    }
+
+    function draw3DEarth() {
         const canvas = document.querySelector('#c');
         const renderer = new THREE.WebGLRenderer({canvas});
 
@@ -53,9 +157,10 @@
         const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
         camera.position.z = 2.5;
 
+        //  controls
         const controls = new OrbitControls(camera, canvas);
         controls.enableDamping = true;
-        controls.enablePan = false;
+        controls.enablePan = false; // 启用或禁用摄像机平移，默认为true
         controls.minDistance = 1.2;
         controls.maxDistance = 4;
         controls.update();
@@ -63,6 +168,7 @@
         const scene = new THREE.Scene();
         scene.background = new THREE.Color('black');
 
+        // 生成地球
         {
             const loader = new THREE.TextureLoader();
             const texture = loader.load('./resources/images/world.jpg', render);
@@ -71,67 +177,41 @@
             scene.add(new THREE.Mesh(geometry, material));
         }
 
-        async function loadFile(url) {
-            const req = await fetch(url);
-            return req.text();
-        }
+        // 绘图函数
+        /*
+         我们新建一个长方体, 然后沿着Z轴缩放. 如果我们不这么做, 它就会以中心为参照放大, 使得根部不在球面上. 我们这么做之后, 就可以达到从球面上长出来的效果.
 
-//        写几行数据来解析文件内容
-        // 上面的代码返回了一个有着全部键值对的对象, 然后data属性是网格化的数据. min 和 max 中是 data 中的极值
-        function parseData(text) {
-            const data = [];
-            const settings = {data};
-            let max;
-            let min;
-            // split into lines
-            text.split('\n').forEach((line) => {
-                // split the line by whitespace
-                const parts = line.trim().split(/\s+/);
-                if (parts.length === 2) {
-                    // only 2 parts, must be a key/value pair
-                    settings[parts[0]] = parseFloat(parts[1]);
-                } else if (parts.length > 2) {
-                    // more than 2 parts, must be data
-                    const values = parts.map((v) => {
-                        const value = parseFloat(v);
-                        if (value === settings.NODATA_value) {
-                            return undefined;
-                        }
-                        max = Math.max(max === undefined ? value : max, value);
-                        min = Math.min(min === undefined ? value : min, value);
-                        return value;
-                    });
-                    data.push(values);
-                }
-            });
-            return Object.assign(settings, {min, max});
-        }
-
-//        绘图函数
+        */
         function addBoxes(file) {
+            console.log('处理后的数据', file)
             const {min, max, data} = file;
             const range = max - min;
 
-            // make one box geometry
+            // 新建一个box geometry
             const boxWidth = 1;
             const boxHeight = 1;
             const boxDepth = 1;
             const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
-            // make it so it scales away from the positive Z axis
+            // 沿着z轴缩放
             geometry.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 0, 0.5));
 
-            // these helpers will make it easy to position the boxes
-            // We can rotate the lon helper on its Y axis to the longitude
+            // 位置辅助器可以方便地在球面上定位
+            // 经度辅助器可以在XZ平面的法向旋转
             const lonHelper = new THREE.Object3D();
             scene.add(lonHelper);
-            // We rotate the latHelper on its X axis to the latitude
+            // 纬度辅助器可以在XZ平面旋转
             const latHelper = new THREE.Object3D();
             lonHelper.add(latHelper);
-            // The position helper moves the object to the edge of the sphere
+            // The position helper moves the object to the edge of the sphere 位置辅助对象将对象移动到球体的边缘
+            // 组合起来得到的位置辅助器可以在球面上定位
             const positionHelper = new THREE.Object3D();
             positionHelper.position.z = 1;
             latHelper.add(positionHelper);
 
+            /*
+             注意lonFudge是π/2也就是四分之一圈, 也就是说在在一周上是以不同的偏移开始. 也能说得通.
+             但是我不知道为什么latFudge要乘以个 π * -0.135, 似乎就是一个能让盒子和材质对齐的数.
+            */
             const lonFudge = Math.PI * .5;
             const latFudge = Math.PI * -0.135;
             data.forEach((row, latNdx) => {
@@ -148,11 +228,11 @@
                     const mesh = new THREE.Mesh(geometry, material);
                     scene.add(mesh);
 
-                    // adjust the helpers to point to the latitude and longitude
+                    // 调整辅助器使其指向经纬度
                     lonHelper.rotation.y = THREE.MathUtils.degToRad(lonNdx + file.xllcorner) + lonFudge;
                     latHelper.rotation.x = THREE.MathUtils.degToRad(latNdx + file.yllcorner) + latFudge;
 
-                    // use the world matrix of the position helper to
+                    // 使用world matrix来操作辅助器
                     // position this mesh.
                     positionHelper.updateWorldMatrix(true, false);
                     mesh.applyMatrix4(positionHelper.matrixWorld);
@@ -195,6 +275,7 @@
             controls.update();
             renderer.render(scene, camera);
         }
+
         render();
 
         function requestRenderIfNotRequested() {
@@ -208,7 +289,430 @@
         window.addEventListener('resize', requestRenderIfNotRequested);
     }
 
-    main();
+    /*
+     优化速度 - 我们可以通过合并所有的盒子到一个geometry来实现, 一下子就可以省下18999个操作
+     移除了之前用来改变盒子几何中心的代码, 取而代之的是originHelper. 这次我们要为每个长方体创建新的几何体, 因为我们要使用“applyMatrix”来移动每个长方体几何体的顶点, 所以我们最好只移动一次, 而不是两次.
+
+     最后, 我们将所有几何体的数组传入BufferGeometryUtils.mergeBufferGeometries, 这个方法将会将其合并到一个mesh中
+    */
+    function draw3DEarth1() {
+
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 60;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 10;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 2.5;
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.enablePan = false;
+        controls.minDistance = 1.2;
+        controls.maxDistance = 4;
+        controls.update();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('black');
+
+        {
+            const loader = new THREE.TextureLoader();
+            const texture = loader.load('https://threejs.org/manual/examples/resources/images/world.jpg', render);
+            const geometry = new THREE.SphereGeometry(1, 64, 32);
+            const material = new THREE.MeshBasicMaterial({map: texture});
+            scene.add(new THREE.Mesh(geometry, material));
+        }
+
+        async function loadFile(url) {
+            const req = await fetch(url);
+            return req.text();
+        }
+
+        function parseData(text) {
+            const data = [];
+            const settings = {data};
+            let max;
+            let min;
+            // split into lines
+            text.split('\n').forEach((line) => {
+                // split the line by whitespace
+                const parts = line.trim().split(/\s+/);
+                if (parts.length === 2) {
+                    // only 2 parts, must be a key/value pair
+                    settings[parts[0]] = parseFloat(parts[1]);
+                } else if (parts.length > 2) {
+                    // more than 2 parts, must be data
+                    const values = parts.map((v) => {
+                        const value = parseFloat(v);
+                        if (value === settings.NODATA_value) {
+                            return undefined;
+                        }
+                        max = Math.max(max === undefined ? value : max, value);
+                        min = Math.min(min === undefined ? value : min, value);
+                        return value;
+                    });
+                    data.push(values);
+                }
+            });
+            return Object.assign(settings, {min, max});
+        }
+
+        function addBoxes(file) {
+            const {min, max, data} = file;
+            const range = max - min;
+
+            // these helpers will make it easy to position the boxes
+            // We can rotate the lon helper on its Y axis to the longitude
+            const lonHelper = new THREE.Object3D();
+            scene.add(lonHelper);
+            // We rotate the latHelper on its X axis to the latitude
+            const latHelper = new THREE.Object3D();
+            lonHelper.add(latHelper);
+            // The position helper moves the object to the edge of the sphere
+            const positionHelper = new THREE.Object3D();
+            positionHelper.position.z = 1;
+            latHelper.add(positionHelper);
+            // Used to move the center of the cube so it scales from the position Z axis
+            const originHelper = new THREE.Object3D();
+            originHelper.position.z = 0.5;
+            positionHelper.add(originHelper);
+
+            const lonFudge = Math.PI * .5;
+            const latFudge = Math.PI * -0.135;
+            const geometries = [];
+            data.forEach((row, latNdx) => {
+                row.forEach((value, lonNdx) => {
+                    if (value === undefined) {
+                        return;
+                    }
+                    const amount = (value - min) / range;
+
+                    const boxWidth = 1;
+                    const boxHeight = 1;
+                    const boxDepth = 1;
+                    const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+                    // adjust the helpers to point to the latitude and longitude
+                    lonHelper.rotation.y = THREE.MathUtils.degToRad(lonNdx + file.xllcorner) + lonFudge;
+                    latHelper.rotation.x = THREE.MathUtils.degToRad(latNdx + file.yllcorner) + latFudge;
+
+                    // use the world matrix of the origin helper to
+                    // position this geometry
+                    positionHelper.scale.set(0.005, 0.005, THREE.MathUtils.lerp(0.01, 0.5, amount));
+                    originHelper.updateWorldMatrix(true, false);
+                    geometry.applyMatrix4(originHelper.matrixWorld);
+
+                    geometries.push(geometry);
+                });
+            });
+
+            const mergedGeometry = BufferGeometryUtils.mergeBufferGeometries(
+                geometries, false);
+            const material = new THREE.MeshBasicMaterial({color:'red'});
+            const mesh = new THREE.Mesh(mergedGeometry, material);
+            scene.add(mesh);
+        }
+
+        loadFile('https://threejs.org/manual/examples/resources/data/gpw/gpw_v4_basic_demographic_characteristics_rev10_a000_014mt_2010_cntm_1_deg.asc')
+            .then(parseData)
+            .then(addBoxes)
+            .then(render);
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        let renderRequested = false;
+
+        function render() {
+            renderRequested = undefined;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        render();
+
+        function requestRenderIfNotRequested() {
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(render);
+            }
+        }
+
+        controls.addEventListener('change', requestRenderIfNotRequested);
+        window.addEventListener('resize', requestRenderIfNotRequested);
+
+    }
+
+
+    /*
+     优化上面的
+     虽然可以了, 但是我们这是一整个mesh, 所以我们只能应用一个材质, 意味着我们只能有一种颜色的盒子. 我们之前可是能有不同颜色的盒子. 我们可以通过使用顶点着色法来解决.
+
+     顶点着色向每个顶点添加一种颜色. 通过设定每个盒子的每个顶点的所有颜色来指定每个盒子的颜色.
+    */
+    function draw3DEarth2() {
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas});
+
+        const fov = 60;
+        const aspect = 2;  // the canvas default
+        const near = 0.1;
+        const far = 10;
+        const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+        camera.position.z = 2.5;
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.enablePan = false;
+        controls.minDistance = 1.2;
+        controls.maxDistance = 4;
+        controls.update();
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('black');
+
+        {
+            const loader = new THREE.TextureLoader();
+            const texture = loader.load('https://threejs.org/manual/examples/resources/images/world.jpg', render);
+            const geometry = new THREE.SphereGeometry(1, 64, 32);
+            const material = new THREE.MeshBasicMaterial({map: texture});
+            scene.add(new THREE.Mesh(geometry, material));
+        }
+
+        async function loadFile(url) {
+            const req = await fetch(url);
+            return req.text();
+        }
+
+        function parseData(text) {
+            const data = [];
+            const settings = {data};
+            let max;
+            let min;
+            // split into lines
+            text.split('\n').forEach((line) => {
+                // split the line by whitespace
+                const parts = line.trim().split(/\s+/);
+                if (parts.length === 2) {
+                    // only 2 parts, must be a key/value pair
+                    settings[parts[0]] = parseFloat(parts[1]);
+                } else if (parts.length > 2) {
+                    // more than 2 parts, must be data
+                    const values = parts.map((v) => {
+                        const value = parseFloat(v);
+                        if (value === settings.NODATA_value) {
+                            return undefined;
+                        }
+                        max = Math.max(max === undefined ? value : max, value);
+                        min = Math.min(min === undefined ? value : min, value);
+                        return value;
+                    });
+                    data.push(values);
+                }
+            });
+            return Object.assign(settings, {min, max});
+        }
+
+        function addBoxes(file) {
+            const {min, max, data} = file;
+            const range = max - min;
+
+            // these helpers will make it easy to position the boxes
+            // We can rotate the lon helper on its Y axis to the longitude
+            const lonHelper = new THREE.Object3D();
+            scene.add(lonHelper);
+            // We rotate the latHelper on its X axis to the latitude
+            const latHelper = new THREE.Object3D();
+            lonHelper.add(latHelper);
+            // The position helper moves the object to the edge of the sphere
+            const positionHelper = new THREE.Object3D();
+            positionHelper.position.z = 1;
+            latHelper.add(positionHelper);
+            // Used to move the center of the cube so it scales from the position Z axis
+            const originHelper = new THREE.Object3D();
+            originHelper.position.z = 0.5;
+            positionHelper.add(originHelper);
+
+            const color = new THREE.Color();
+
+            const lonFudge = Math.PI * .5;
+            const latFudge = Math.PI * -0.135;
+            const geometries = [];
+            data.forEach((row, latNdx) => {
+                row.forEach((value, lonNdx) => {
+                    if (value === undefined) {
+                        return;
+                    }
+                    const amount = (value - min) / range;
+
+                    const boxWidth = 1;
+                    const boxHeight = 1;
+                    const boxDepth = 1;
+                    const geometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+
+                    // adjust the helpers to point to the latitude and longitude
+                    lonHelper.rotation.y = THREE.MathUtils.degToRad(lonNdx + file.xllcorner) + lonFudge;
+                    latHelper.rotation.x = THREE.MathUtils.degToRad(latNdx + file.yllcorner) + latFudge;
+
+                    // use the world matrix of the origin helper to
+                    // position this geometry
+                    positionHelper.scale.set(0.005, 0.005, THREE.MathUtils.lerp(0.01, 0.5, amount));
+                    originHelper.updateWorldMatrix(true, false);
+                    geometry.applyMatrix4(originHelper.matrixWorld);
+
+                    // 我们查找几何体中的position属性来获取所需的数量和顶点. 然后创建一个Uint8Array来输入颜色. 接下来通过调用geometry.setAttribute来将其设定为一个属性.
+                    // compute a color
+                    const hue = THREE.MathUtils.lerp(0.7, 0.3, amount);
+                    const saturation = 1;
+                    const lightness = THREE.MathUtils.lerp(0.4, 1.0, amount);
+                    color.setHSL(hue, saturation, lightness);
+                    // get the colors as an array of values from 0 to 255
+                    const rgb = color.toArray().map(v => v * 255);
+
+                    // make an array to store colors for each vertex
+                    const numVerts = geometry.getAttribute('position').count;
+                    const itemSize = 3;  // r, g, b
+                    const colors = new Uint8Array(itemSize * numVerts);
+
+                    // copy the color into the colors array for each vertex
+                    colors.forEach((v, ndx) => {
+                        colors[ndx] = rgb[ndx % 3];
+                    });
+
+                    const normalized = true;
+                    const colorAttrib = new THREE.BufferAttribute(colors, itemSize, normalized);
+                    geometry.setAttribute('color', colorAttrib);
+
+                    geometries.push(geometry);
+                });
+            });
+
+            const mergedGeometry = BufferGeometryUtils.mergeBufferGeometries(
+                geometries, false);
+            const material = new THREE.MeshBasicMaterial({
+                vertexColors: true,//  告诉three.js使用顶点上色.
+            });
+            const mesh = new THREE.Mesh(mergedGeometry, material);
+            scene.add(mesh);
+        }
+
+        loadFile('https://threejs.org/manual/examples/resources/data/gpw/gpw_v4_basic_demographic_characteristics_rev10_a000_014mt_2010_cntm_1_deg.asc')
+            .then(parseData)
+            .then(addBoxes)
+            .then(render);
+
+        function resizeRendererToDisplaySize(renderer) {
+            const canvas = renderer.domElement;
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            const needResize = canvas.width !== width || canvas.height !== height;
+            if (needResize) {
+                renderer.setSize(width, height, false);
+            }
+            return needResize;
+        }
+
+        let renderRequested = false;
+
+        function render() {
+            renderRequested = undefined;
+
+            if (resizeRendererToDisplaySize(renderer)) {
+                const canvas = renderer.domElement;
+                camera.aspect = canvas.clientWidth / canvas.clientHeight;
+                camera.updateProjectionMatrix();
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        render();
+
+        function requestRenderIfNotRequested() {
+            if (!renderRequested) {
+                renderRequested = true;
+                requestAnimationFrame(render);
+            }
+        }
+
+        controls.addEventListener('change', requestRenderIfNotRequested);
+        window.addEventListener('resize', requestRenderIfNotRequested);
+    }
+
+    // gui 切换- 这里使用最简单的刷新页面
+    const gui = new GUI()
+    {
+        // 切换下拉
+        /**
+         * @title: 当前下拉作为独立panel的名称
+         * @arr：下拉显示项 eg:[xxx,xxxxx]
+         * @arrFn: 对应arr 触发选中当前项后的方法，arr.length === arrFn.length
+         * @addFolder: 是否新建一个父节点
+         * */
+        function addChangeTab(title, arr, arrFn, addFolder = true) {
+            let parent = addFolder ? gui.addFolder(title) : gui;
+//                const folder = gui.addFolder(title); // 单独来个panel
+            let useTab = sessionStorage.getItem('TABKEY');
+            let index = arr.findIndex(item => item === useTab) // 用于初次执行对应方法
+            if (!useTab) { // 初次进来没有值，赋值第一个
+                sessionStorage.setItem('TABKEY', arr[0]);
+                useTab = arr[0]
+            }
+            if (index < 0) { // 兼容 TABKEY 在多个页面使用的情况，这种情况说明，当前TABKEY 是其他页面赋值的值，当前页面没有，因此需要重写赋值
+                index = 0
+                sessionStorage.setItem('TABKEY', arr[0]);
+                useTab = arr[0]
+            }
+
+            let obj = {
+                changeTab: useTab // 下拉默认选中项
+            }
+            // 给obj对象开启gui控制，当changeTab属性发生变化，设置对应的值到sessionStorage，页面刷新则初始执行对应方法，达到切换目的
+            parent.add(obj, 'changeTab', arr).name('切换').onChange(function (val) {
+                sessionStorage.setItem('TABKEY', val);
+                window.location.reload() // 水平不够，暂未想到只更新部分内容的方法，来个最简单的直接刷新页面
+//               switch (val){
+//                   case arr[0]:
+//                       arrFn[0]()
+//                       break
+//                   case arr[1]:
+//                       arrFn[1]()
+//                       break
+//                   case arr[2]:
+//                       arrFn[2]()
+//                       break
+//               }
+            });
+
+            arrFn[index]() // 默认执行
+        }
+
+        addChangeTab(
+            'demo切换',
+            ['绘制2D 地图数据', '绘制3D 地球','绘制3D 地球-优化速度','绘制3D 地球-优化速度并使用使用顶点着色法解决颜色问题'],
+            [ // 上面tab对应的方法
+                draw2DCanvas,
+                draw3DEarth,
+                draw3DEarth1,
+                draw3DEarth2
+            ], false)
+    }
 
 </script>
 </body>
