@@ -150,7 +150,7 @@
         geometry.setAttribute(
             'position',
             new THREE.BufferAttribute(new Float32Array(positions), positionNumComponents));
-        geometry.setAttribute(
+        geometry.setAttribute( // 没有定义顶点法向量数据则，点光源、平行光等带有方向性的光源不会起作用，物体将没有棱角感
             'normal',
             new THREE.BufferAttribute(new Float32Array(normals), normalNumComponents));
         geometry.setAttribute(

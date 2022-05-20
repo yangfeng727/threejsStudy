@@ -90,6 +90,7 @@
 
             let cube = new THREE.Mesh(geometry, material)
             cube.position.x = -2;
+            scene.add(cube)
             return cube
         }
 
@@ -104,6 +105,8 @@
 
             let cube = new THREE.Mesh(geometry, material)
             cube.position.x = 0;
+            cube.name = '测试此mesh是否重复添加'
+            scene.add(cube)
             return cube
         }
 
@@ -117,7 +120,37 @@
 
             let cube = new THREE.Mesh(geometry, material)
             cube.position.x = 2;
+            scene.add(cube)
             return cube
+        }
+
+        /**
+         * 给几何体添加类似wireframe的线框，
+         * 当前只支持位置，而传入的网格对象没有缩放，旋转的情况暂不支持，可以类似位置一样扩展，但是我觉得应该有更好的方式可直接复制偏移、旋转、缩放的信息
+         * @mesh：需要显示线框的网格对象
+         * */
+        function wireframeGeometry(mesh) {
+            const pos = mesh.position
+            const geometry = mesh.geometry
+
+            // 新建一个父级对象，将当前网格对象的位置信息赋值 给 父对象，并清空自身信息
+            const obj3D = new THREE.Object3D();
+            obj3D.add(mesh)
+            obj3D.position.set(pos.x, pos.y, pos.z) // 将位置信息放入父节点
+            mesh.position.set(0, 0, 0) // 清空本身的位置信息
+
+            // 生成线框
+            const wireframeGeo = new THREE.WireframeGeometry(geometry);
+            const line = new THREE.LineSegments(wireframeGeo);
+            line.material.depthTest = true;
+            line.material.opacity = 0.25;
+            line.material.transparent = true;
+
+            obj3D.add(line);
+            scene.remove(mesh) // 在场景中移除，防止重复添加
+            scene.add(obj3D) // 添加到场景中
+
+            return obj3D
         }
 
         // 添加grid helper
@@ -125,15 +158,116 @@
         scene.add( gridHelper );
 
         const cubes = [
-            factoryCube1(),
-            factoryCube2(),
-            factoryCube3()
+            wireframeGeometry(factoryCube1()),
+            wireframeGeometry(factoryCube2()),
+            wireframeGeometry(factoryCube3())
         ]
 
-        // 将立方体添加到场景
-        cubes.map(item => {
-            scene.add(item)
+        console.log('场景',scene)
+
+        // 添加机器人
+        function robot(){
+            // 头部网格模型和组
+            var headMesh = sphereMesh(10, 0, 0, 0);
+            headMesh.name = "脑壳"
+            var leftEyeMesh = sphereMesh(1, 8, 5, 4);
+            leftEyeMesh.name = "左眼"
+            var rightEyeMesh = sphereMesh(1, 8, 5, -4);
+            rightEyeMesh.name = "右眼"
+            var headGroup = new THREE.Group();
+            headGroup.name = "头部"
+            headGroup.add(headMesh, leftEyeMesh, rightEyeMesh);
+// 身体网格模型和组
+            var neckMesh = cylinderMesh(3, 10, 0, -15, 0);
+            neckMesh.name = "脖子"
+            var bodyMesh = cylinderMesh(14, 30, 0, -35, 0);
+            bodyMesh.name = "腹部"
+            var leftLegMesh = cylinderMesh(4, 60, 0, -80, -7);
+            leftLegMesh.name = "左腿"
+            var rightLegMesh = cylinderMesh(4, 60, 0, -80, 7);
+            rightLegMesh.name = "右腿"
+            var legGroup = new THREE.Group();
+            legGroup.name = "腿"
+            legGroup.add(leftLegMesh, rightLegMesh);
+            var bodyGroup = new THREE.Group();
+            bodyGroup.name = "身体"
+            bodyGroup.add(neckMesh, bodyMesh, legGroup);
+// 人Group
+            var personGroup = new THREE.Group();
+            personGroup.name = "人"
+            personGroup.add(headGroup, bodyGroup)
+            personGroup.translateY(50)
+            personGroup.scale.set(0.1,0.1,0.1)
+            personGroup.position.set(0,-3,0)
+            scene.add(personGroup);
+
+// 球体网格模型创建函数
+            function sphereMesh(R, x, y, z) {
+                var geometry = new THREE.SphereGeometry(R, 25, 25); //球体几何体
+                var material = new THREE.MeshPhongMaterial({
+                    color: 0x0000ff
+                }); //材质对象Material
+                var mesh = new THREE.Mesh(geometry, material); // 创建网格模型对象
+                mesh.position.set(x, y, z);
+                return mesh;
+            }
+// 圆柱体网格模型创建函数
+            function cylinderMesh(R, h, x, y, z) {
+                var geometry = new THREE.CylinderGeometry(R, R, h, 25, 25); //球体几何体
+                var material = new THREE.MeshPhongMaterial({
+                    color: 0x0000ff
+                }); //材质对象Material
+                var mesh = new THREE.Mesh(geometry, material); // 创建网格模型对象
+                mesh.position.set(x, y, z);
+                return mesh;
+            }
+
+
+            // 本地坐标和世界坐标
+            {
+                let mesh = leftEyeMesh
+                // .position属性获得本地坐标
+                console.log('本地坐标',mesh.position);
+
+                // getWorldPosition()方法获得世界坐标
+                // 该语句默认在threejs渲染的过程中执行,如果渲染之前想获得世界矩阵属性、世界位置属性等属性，需要通过代码更新
+                scene.updateMatrixWorld(true);
+                let worldPosition = new THREE.Vector3();
+                mesh.getWorldPosition(worldPosition);
+                console.log('世界坐标',worldPosition); // 个模型相对世界坐标系的坐标值就是该模型对象所有父对象以及模型本身位置属性.position的叠加。
+
+
+                console.log('本地缩放系数',mesh.scale);
+                let worldScale =new THREE.Vector3()
+                mesh.getWorldScale(worldScale);
+                console.log('世界局部的缩放系数',worldScale);
+
+                console.log('查看本地矩阵属性matrix',mesh.matrix.elements);
+            }
+        }
+//        robot()
+
+        // 递归children的方法
+        scene.traverse(function(obj) {
+//            console.log(obj, 11)
+/*            if (obj.type === "Group") {
+                console.log(obj.name);
+            }
+            if (obj.type === "Mesh") {
+                console.log('  ' + obj.name);
+                obj.material.color && obj.material.color.set(0xffff00);
+            }
+            if (obj.name === "左眼" | obj.name === "右眼") {
+                obj.material.color && obj.material.color.set(0x000000)
+            }
+            // 打印id属性
+            console.log(obj.id);
+            // 打印该对象的父对象
+            console.log(obj.parent);
+            // 打印该对象的子对象
+            console.log(obj.children);*/
         })
+
 
         // 添加灯光
         function addLight() {
@@ -219,10 +353,22 @@
             let animate = function () {
                 // time *= 0.001;  // 将时间单位变为秒
                 cubes.forEach((cube, ndx) => {
-                    // const speed = 1 + ndx * .1;
-                    // const rot = time * speed;
-                    cube.rotation.x += 0.01 + 0.01 * ndx;
-                    cube.rotation.y += 0.01 + 0.01 * ndx;
+
+                    let fn = (cube)=>{
+                        // const speed = 1 + ndx * .1;
+                        // const rot = time * speed;
+                        cube.rotation.x += 0.01 + 0.01 * ndx;
+                        cube.rotation.y += 0.01 + 0.01 * ndx;
+                    }
+
+                    if(Array.isArray(cube)){
+                        cube.map(item=>{
+                            fn(item)
+                        })
+                    }else{
+                        fn(cube)
+                    }
+
                 });
 
                 renderer.render(scene, camera);
