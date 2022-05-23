@@ -124,12 +124,44 @@
             return cube
         }
 
+        // 生成立方体4 - 拉伸扫描成型ExtrudeGeometry
+        function factoryCube4() {
+            const length = 12, width = 8;
+
+            // 先绘制一个矩形
+            const shape = new THREE.Shape();
+            shape.moveTo( 0,0 );
+            shape.lineTo( 0, width );
+            shape.lineTo( length, width );
+            shape.lineTo( length, 0 );
+            shape.lineTo( 0, 0 );
+
+            const extrudeSettings = {
+                steps: 2,
+                depth: 16, // 深度
+                bevelEnabled: true,
+                bevelThickness: 1,
+                bevelSize: 1,
+                bevelOffset: 0,
+                bevelSegments: 1
+            };
+
+            const geometry = new THREE.ExtrudeGeometry( shape, extrudeSettings ); // 挤压缓冲几何体
+            const material = new THREE.MeshPhongMaterial( { color: 0x44aa88 } );
+            const cube = new THREE.Mesh( geometry, material ) ;
+            cube.position.z = -6;
+            cube.scale.set(0.1,0.1,0.1)
+            scene.add(cube)
+            return cube
+        }
+
         /**
          * 给几何体添加类似wireframe的线框，
-         * 当前只支持位置，而传入的网格对象没有缩放，旋转的情况暂不支持，可以类似位置一样扩展，但是我觉得应该有更好的方式可直接复制偏移、旋转、缩放的信息
+         * 当前只支持位置、缩放，而传入的网格对象有旋转的情况暂不支持，可以类似位置一样扩展，但是我觉得应该有更好的方式可直接复制偏移、旋转、缩放的信息
          * @mesh：需要显示线框的网格对象
          * */
         function wireframeGeometry(mesh) {
+            const scale = mesh.scale
             const pos = mesh.position
             const geometry = mesh.geometry
 
@@ -137,7 +169,9 @@
             const obj3D = new THREE.Object3D();
             obj3D.add(mesh)
             obj3D.position.set(pos.x, pos.y, pos.z) // 将位置信息放入父节点
+            obj3D.scale.set(scale.x, scale.y, scale.z) // 将缩放信息放入父节点
             mesh.position.set(0, 0, 0) // 清空本身的位置信息
+            mesh.scale.set(1, 1, 1) // 清空本身的缩放信息
 
             // 生成线框
             const wireframeGeo = new THREE.WireframeGeometry(geometry);
@@ -160,8 +194,10 @@
         const cubes = [
             wireframeGeometry(factoryCube1()),
             wireframeGeometry(factoryCube2()),
-            wireframeGeometry(factoryCube3())
+            wireframeGeometry(factoryCube3()),
         ]
+
+        wireframeGeometry(factoryCube4())
 
         console.log('场景',scene)
 
